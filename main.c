@@ -13,6 +13,14 @@ typedef struct {
   int y;
 } point;
 
+void copy_rgb(UCHAR *h_r, UCHAR *h_g, UCHAR *h_b, UCHAR *d_r, UCHAR *d_g,
+              UCHAR *d_b, int width, int height) {
+  int pixelCount = width * height;
+  memcpy(h_r, d_r, pixelCount * sizeof(UCHAR));
+  memcpy(h_g, d_g, pixelCount * sizeof(UCHAR));
+  memcpy(h_b, d_b, pixelCount * sizeof(UCHAR));
+}
+
 int dfs_vertical(int x, int y, UCHAR *gray_channel, int bound_low,
                  int bound_high, int width, int height, int total_energy,
                  point *path) {
@@ -65,39 +73,114 @@ void find_best_path1(int width, int height, UCHAR *h_r,
     }
   }
 }
-void find_best_path2(int width, int height, int batch_size, UCHAR *h_r,
-                     point *least_energy_paths) {
-  int least_total_energy = 99999999;
+int find_x_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
+                        int height) {
+  int index = x + y * width;
+  if (removed_mask[index] == 0) {
+    return x;
+  }
+  if (dir == 0) {
+    return find_x_of_unremoved(x - 1, y, dir, removed_mask, width, height);
+  } else {
+    return find_x_of_unremoved(x + 1, y, dir, removed_mask, width, height);
+  }
+}
+void find_best_path2(int width, int height, int batch_size,
+                     UCHAR *energy_matrix, point *least_energy_paths,
+                     UCHAR *removed_mask) {
+  int least_total_energy_disruption = 99999999;
   for (int batch = 0; batch < batch_size; batch++) {
     // int x = (width / 100) * batch;
     int x = rand() % width;
-    int total_energy = 0;
+    int total_energy_disruption = 0;
     point *path = malloc(height * sizeof(point));
 
     for (int y = 0; y < height; ++y) {
       int index = x + y * width;
-      UCHAR energy = h_r[index];
-      total_energy += energy * energy;
       path[y].x = x;
       path[y].y = y;
-      int min_child_energy = 255;
+      int min_energy_disrupt = 9999999;
       int rng = rand() % 31231412;
 
+      int left_x =
+          find_x_of_unremoved(x - 1, y + 1, 0, removed_mask, width, height);
+      int center_x =
+          find_x_of_unremoved(x, y + 1, 1, removed_mask, width, height);
+      int right_x = find_x_of_unremoved(center_x + 1, y + 1, 1, removed_mask,
+                                        width, height);
       for (int j = 0; j < 3; ++j) {
-        int x_child = x + (rng + j) % 3 - 1;
-        if (x_child < 0 || x_child >= width) {
-          continue;
+        char random_child_index = (rng + j) % 3 - 1; // random order of -1, 0, 1
+        int x_child;
+        int introduced_energy = 0;
+        switch (random_child_index) {
+        case -1: // left
+          x_child = left_x;
+          if (x_child <= 1 || y == height - 1) {
+            introduced_energy = 255;
+          } else {
+            int x_left_parent =
+                find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
+            int x_right_child = find_x_of_unremoved(
+                x_child + 1, y + 1, 1, removed_mask, width, height);
+            ;
+            int x_left_child = find_x_of_unremoved(x_child - 1, y + 1, 0,
+                                                   removed_mask, width, height);
+            ;
+            introduced_energy =
+                abs(energy_matrix[x_right_child + (y + 1) * width] -
+                    energy_matrix[x_left_parent + y * width]) +
+                abs(energy_matrix[x_right_child + (y + 1) * width] -
+                    energy_matrix[x_left_child + (y + 1) * width]);
+          }
+          break;
+
+        case 0: // center
+          x_child = center_x;
+          if (x_child == 0 || x_child == width - 1 || y == height - 1) {
+            introduced_energy = 255;
+          } else {
+            int x_right_child = find_x_of_unremoved(
+                x_child + 1, y + 1, 1, removed_mask, width, height);
+            ;
+            int x_left_child = find_x_of_unremoved(x_child - 1, y + 1, 0,
+                                                   removed_mask, width, height);
+            introduced_energy =
+                abs(energy_matrix[x_right_child + (y + 1) * width] -
+                    energy_matrix[x_left_child + (y + 1) * width]);
+          }
+          break;
+
+        case 1: // right
+          x_child = right_x;
+          if (x_child >= width - 2 || y == height - 1) {
+            introduced_energy = 255;
+          } else {
+            int x_right_parent =
+                find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
+            int x_right_child = find_x_of_unremoved(
+                x_child + 1, y + 1, 1, removed_mask, width, height);
+            ;
+            int x_left_child = find_x_of_unremoved(x_child - 1, y + 1, 0,
+                                                   removed_mask, width, height);
+            ;
+            introduced_energy =
+                abs(energy_matrix[x_left_child + (y + 1) * width] -
+                    energy_matrix[x_right_parent + y * width]) +
+                abs(energy_matrix[x_left_child + (y + 1) * width] -
+                    energy_matrix[x_right_child + (y + 1) * width]);
+          }
+          break;
         }
-        int index_child = x_child + (y + 1) * width;
-        UCHAR energy_child = h_r[index_child];
-        if (energy_child < min_child_energy) {
-          min_child_energy = energy_child;
+        if (introduced_energy < min_energy_disrupt) {
+          min_energy_disrupt = introduced_energy;
           x = x_child;
         }
       }
+
+      total_energy_disruption += min_energy_disrupt;
     }
-    if (total_energy < least_total_energy) {
-      least_total_energy = total_energy;
+    if (total_energy_disruption < least_total_energy_disruption) {
+      least_total_energy_disruption = total_energy_disruption;
       memcpy(least_energy_paths, path, height * sizeof(point));
     }
   }
@@ -119,7 +202,7 @@ int main() {
   sprintf(outCroppedFile, "%s_out_cropped.bmp", inFileBase);
 
   int crop_percent = 25;
-  int batch_size = 10;
+  int batch_size = 1000;
 
   UINT width, height;
   UINT x, y;
@@ -141,6 +224,20 @@ int main() {
   UCHAR *original_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *original_b = malloc(pixelCount * sizeof(UCHAR));
 
+  UCHAR *removed_mask = malloc(pixelCount * sizeof(UCHAR));
+  for (y = 0; y < height; ++y) {
+    for (x = 0; x < width; ++x) {
+      int index = x + y * width;
+      BMP_GetPixelRGB(bmp, x, y, original_r + index, original_g + index,
+                      original_b + index);
+
+      removed_mask[index] = 0;
+
+      // rescaling to 254 to use 255 as a removed seam marker
+      // original_r[index] = (original_r[index] / 255) * 254;
+    }
+  }
+
   UCHAR *energy_r = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *energy_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *energy_b = malloc(pixelCount * sizeof(UCHAR));
@@ -149,33 +246,16 @@ int main() {
   UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
 
-  printf("H/D memory allocation done.\n");
+  copy_rgb(energy_r, energy_g, energy_b, original_r, original_g, original_b,
+           width, height);
+  copy_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g, original_b,
+           width, height);
 
-  for (y = 0; y < height; ++y) {
-    for (x = 0; x < width; ++x) {
-      int index = x + y * width;
-      BMP_GetPixelRGB(bmp, x, y, original_r + index, original_g + index,
-                      original_b + index);
-      BMP_GetPixelRGB(bmp, x, y, energy_r + index, energy_g + index,
-                      energy_b + index);
-      BMP_GetPixelRGB(bmp, x, y, cropped_r + index, cropped_g + index,
-                      cropped_b + index);
-    }
-  }
+  printf("H/D memory allocation done.\n");
 
   printf("Data sent to device.\n");
 
   energy(energy_r, energy_g, energy_b, width, height);
-
-  int desaturation = 5;
-  for (y = 0; y < height; ++y) {
-    for (x = 0; x < width; ++x) {
-      int index = x + y * width;
-      *(energy_r + index) = *(energy_r + index) / desaturation;
-      *(energy_g + index) = *(energy_g + index) / desaturation;
-      *(energy_b + index) = *(energy_b + index) / desaturation;
-    }
-  }
 
   printf("Data received from device.\n");
 
@@ -183,10 +263,13 @@ int main() {
   point **least_energy_paths = malloc(n_cols * sizeof(point *));
   for (int i = 0; i < n_cols; i++) {
     least_energy_paths[i] = malloc(height * sizeof(point));
-    find_best_path2(width, height, batch_size, energy_r, least_energy_paths[i]);
+    find_best_path2(width, height, batch_size, energy_r, least_energy_paths[i],
+                    removed_mask);
     for (int y = 0; y < height; ++y) {
       int x = least_energy_paths[i][y].x;
       int index = x + y * width;
+
+      removed_mask[index] = 255;
       energy_r[index] = 255;
       energy_g[index] = 0;
       energy_b[index] = 0;

@@ -96,4 +96,14 @@ extern "C" void energy(UCHAR *out_r, UCHAR *out_g, UCHAR *out_b, int width,
   cudaFree(energy_r);
   cudaFree(energy_g);
   cudaFree(energy_b);
+
+  int desaturation = 1;
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      int index = x + y * width;
+      *(out_r + index) = *(out_r + index) / desaturation;
+      *(out_g + index) = *(out_g + index) / desaturation;
+      *(out_b + index) = *(out_b + index) / desaturation;
+    }
+  }
 }
