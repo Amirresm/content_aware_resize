@@ -79,13 +79,6 @@ void find_best_vertical_seam(int width, int height, int batch_size,
       int min_energy_disrupt = 9999999;
       int rng = rand() % 31231412;
 
-      // int left_x =
-      //     find_horiz_of_unremoved(x - 1, y + 1, 0, removed_mask, width,
-      //     height);
-      // int center_x =
-      //     find_horiz_of_unremoved(x, y + 1, 1, removed_mask, width, height);
-      // int right_x = find_horiz_of_unremoved(center_x + 1, y + 1, 1,
-      //                                       removed_mask, width, height);
       point left_c = {.x = x - 1, .y = y + 1};
       find_horiz_of_unremoved(&left_c, 0, removed_mask, width, height);
       point center_c = {.x = x, .y = y + 1};
@@ -346,6 +339,49 @@ void update_enery_around_pixel(int x, int y, UCHAR *energy_matrix,
                 height);
 }
 
+void remove_vert_seam(int width, int height, int batch_size, UCHAR *energy_r,
+                      UCHAR *removed_mask, UCHAR *original_r, UCHAR *original_g,
+                      UCHAR *original_b) {
+  point *vert_least_energy_paths = malloc(height * sizeof(point));
+  find_best_vertical_seam(width, height, batch_size, energy_r,
+                          vert_least_energy_paths, removed_mask);
+  for (int y = 0; y < height; ++y) {
+    int x = vert_least_energy_paths[y].x;
+    int index = x + y * width;
+
+    if (removed_mask[index] == 0)
+      removed_mask[index] = 1;
+    else
+      removed_mask[index] = 3;
+
+    update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
+                              original_g, original_b, width, height);
+  }
+  free(vert_least_energy_paths);
+}
+
+void remove_horiz_seam(int width, int height, int batch_size, UCHAR *energy_r,
+                       UCHAR *removed_mask, UCHAR *original_r,
+                       UCHAR *original_g, UCHAR *original_b) {
+
+  point *horiz_least_energy_paths = malloc(width * sizeof(point));
+  find_best_horiz_seam(width, height, batch_size, energy_r,
+                       horiz_least_energy_paths, removed_mask);
+  for (int x = 0; x < width; ++x) {
+    int y = horiz_least_energy_paths[x].y;
+    int index = x + y * width;
+
+    if (removed_mask[index] == 0)
+      removed_mask[index] = 2;
+    else
+      removed_mask[index] = 4;
+
+    update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
+                              original_g, original_b, width, height);
+  }
+  free(horiz_least_energy_paths);
+}
+
 void get_cropped_rgb(UCHAR *cropped_r, UCHAR *cropped_g, UCHAR *cropped_b,
                      UCHAR *original_r, UCHAR *original_g, UCHAR *original_b,
                      UCHAR *removed_mask, int width, int height, int n_cols,
@@ -393,10 +429,11 @@ void get_cropped_rgb(UCHAR *cropped_r, UCHAR *cropped_g, UCHAR *cropped_b,
 int main() {
   printf("Program start.\n");
   srand(time(NULL));
+  printf("Random seed set %d.\n", rand());
 
   BMP_GetError();
   // const char *inFileBase = "main";
-  const char *inFileBase = "Image1";
+  const char *inFileBase = "rain";
   char inFile[100];
   sprintf(inFile, "%s.bmp", inFileBase);
   char outColFile[100];
@@ -406,8 +443,8 @@ int main() {
   sprintf(outEnergyFile, "%s_out_energy.bmp", inFileBase);
   sprintf(outCroppedFile, "%s_out_cropped.bmp", inFileBase);
 
-  int horiz_crop_percent = 25;
-  int vert_crop_percent = 25;
+  int vert_crop_percent = 10;
+  int horiz_crop_percent = 10;
   int batch_size = 1000;
 
   UINT width, height;
@@ -456,57 +493,57 @@ int main() {
 
   printf("Data received from device.\n");
 
-  int n_cols = width * vert_crop_percent / 100;
-  point **vert_least_energy_paths = malloc(n_cols * sizeof(point *));
+  // int n_cols = width * vert_crop_percent / 100;
+  // int n_rows = height * horiz_crop_percent / 100;
+  int n_cols = 5;
+  int n_rows = 5;
+
   for (int i = 0; i < n_cols; i++) {
-    vert_least_energy_paths[i] = malloc(height * sizeof(point));
-    find_best_vertical_seam(width, height, batch_size, energy_r,
-                            vert_least_energy_paths[i], removed_mask);
-    for (int y = 0; y < height; ++y) {
-      int x = vert_least_energy_paths[i][y].x;
-      int index = x + y * width;
-
-      if (removed_mask[index] == 0)
-        removed_mask[index] = 1;
-
-      update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
-                                original_g, original_b, width, height);
-    }
+    remove_vert_seam(width, height, batch_size, energy_r, removed_mask,
+                     original_r, original_g, original_b);
   }
 
-  int n_rows = height * horiz_crop_percent / 100;
-  point **horiz_least_energy_paths = malloc(n_rows * sizeof(point *));
   for (int i = 0; i < n_rows; i++) {
-    horiz_least_energy_paths[i] = malloc(width * sizeof(point));
-    find_best_horiz_seam(width, height, batch_size, energy_r,
-                         horiz_least_energy_paths[i], removed_mask);
-    for (int x = 0; x < width; ++x) {
-      int y = horiz_least_energy_paths[i][x].y;
-      int index = x + y * width;
-
-      if (removed_mask[index] == 0)
-        removed_mask[index] = 2;
-
-      update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
-                                original_g, original_b, width, height);
-    }
+    remove_horiz_seam(width, height, batch_size, energy_r, removed_mask,
+                      original_r, original_g, original_b);
   }
-  for (int i = 0; i < n_cols; i++) {
+  // int i = n_cols, j = n_rows;
+  // while (i + j > 0) {
+  //   int rng = rand() % 2;
+  //   if (rng == 0 && i > 0) {
+  //     remove_vert_seam(width, height, batch_size, energy_r, removed_mask,
+  //                      original_r, original_g, original_b);
+  //     i--;
+  //   } else if (j > 0) {
+  //     remove_horiz_seam(width, height, batch_size, energy_r, removed_mask,
+  //                       original_r, original_g, original_b);
+  //     j--;
+  //   }
+  // }
+
+  for (int x = 0; x < width; ++x) {
     for (int y = 0; y < height; ++y) {
-      int x = vert_least_energy_paths[i][y].x;
       int index = x + y * width;
-      original_r[index] = 255;
-      original_g[index] = 0;
-      original_b[index] = 0;
-    }
-  }
-  for (int i = 0; i < n_rows; i++) {
-    for (int x = 0; x < width; ++x) {
-      int y = horiz_least_energy_paths[i][x].y;
-      int index = x + y * width;
-      original_r[index] = 0;
-      original_g[index] = 0;
-      original_b[index] = 255;
+      if (removed_mask[index] == 1) {
+        original_r[index] = 255;
+        original_g[index] = 0;
+        original_b[index] = 0;
+      }
+      if (removed_mask[index] == 2) {
+        original_r[index] = 0;
+        original_g[index] = 0;
+        original_b[index] = 255;
+      }
+      if (removed_mask[index] == 3) {
+        original_r[index] = 255;
+        original_g[index] = 0;
+        original_b[index] = 255;
+      }
+      if (removed_mask[index] == 4) {
+        original_r[index] = 0;
+        original_g[index] = 255;
+        original_b[index] = 255;
+      }
     }
   }
 
