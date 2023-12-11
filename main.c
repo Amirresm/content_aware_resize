@@ -526,6 +526,20 @@ void get_cropped_rgb(UCHAR *cropped_r, UCHAR *cropped_g, UCHAR *cropped_b,
       inter_b[cropped_index] = original_b[index];
     }
   }
+  int new_w = (width - n_cols);
+  // for (x = 1; x < new_w - 1; ++x) {
+  //   for (y = 1; y < height - 1; ++y) {
+  //     if (inter_mask[get_index(x, y, new_w)] &&
+  //         (inter_mask[get_index(x - 1, y + 1, new_w)] ||
+  //          inter_mask[get_index(x - 1, y, new_w)] ||
+  //          inter_mask[get_index(x - 1, y - 1, new_w)]) &&
+  //         (inter_mask[get_index(x + 1, y + 1, new_w)] ||
+  //          inter_mask[get_index(x + 1, y, new_w)] ||
+  //          inter_mask[get_index(x + 1, y - 1, new_w)])) {
+  //       inter_mask[get_index(x, y, new_w)] = 0;
+  //     }
+  //   }
+  // }
   for (x = 0; x < (width - n_cols); ++x) {
     int reducer = 0;
     for (y = 0; y < height; ++y) {
@@ -642,6 +656,8 @@ int main(int argc, char const *argv[]) {
   int batch_size = 100;
   // const char *inFileBase = "main";
   const char *inFileBase = "rain";
+  const char *in_path = "";
+  const char *out_path = "";
 
   if (argc == 2) {
     solution = atoi(argv[1]);
@@ -661,29 +677,47 @@ int main(int argc, char const *argv[]) {
     horiz_crop_percent = atoi(argv[3]);
     batch_size = atoi(argv[4]);
   }
-  if (argc == 5) {
+  if (argc == 6) {
     solution = atoi(argv[1]);
     vert_crop_percent = atoi(argv[2]);
     horiz_crop_percent = atoi(argv[3]);
     batch_size = atoi(argv[4]);
     inFileBase = argv[5];
   }
+  if (argc == 7) {
+    solution = atoi(argv[1]);
+    vert_crop_percent = atoi(argv[2]);
+    horiz_crop_percent = atoi(argv[3]);
+    batch_size = atoi(argv[4]);
+    inFileBase = argv[5];
+    in_path = argv[6];
+  }
+  if (argc == 8) {
+    solution = atoi(argv[1]);
+    vert_crop_percent = atoi(argv[2]);
+    horiz_crop_percent = atoi(argv[3]);
+    batch_size = atoi(argv[4]);
+    inFileBase = argv[5];
+    in_path = argv[6];
+    out_path = argv[7];
+  }
   srand(time(NULL));
 
   BMP_GetError();
   char inFile[100];
-  sprintf(inFile, "%s.bmp", inFileBase);
+  sprintf(inFile, "%s%s.bmp", in_path, inFileBase);
   char outColFile[100];
   char outEnergyFile[100];
   char outCroppedFile[100];
-  sprintf(outColFile, "%s_out_col.bmp", inFileBase);
-  sprintf(outEnergyFile, "%s_out_energy.bmp", inFileBase);
-  sprintf(outCroppedFile, "%s_out_cropped.bmp", inFileBase);
+  sprintf(outColFile, "%s%s_out_col.bmp", out_path, inFileBase);
+  sprintf(outEnergyFile, "%s%s_out_energy.bmp", out_path, inFileBase);
+  sprintf(outCroppedFile, "%s%s_out_cropped.bmp", out_path, inFileBase);
 
   UINT width, height;
   UINT x, y;
   BMP *bmp;
 
+  printf("Reading %s ...\n", inFile);
   bmp = BMP_ReadFile(inFile);
   BMP_CHECK_ERROR(stdout, -1);
 
@@ -693,14 +727,22 @@ int main(int argc, char const *argv[]) {
   height = BMP_GetHeight(bmp);
   unsigned int pixelCount = width * height;
   BMP_CHECK_ERROR(stderr, -2);
-  int n_cols = width * vert_crop_percent / 100;
-  int n_rows = solution == 4 ? height * horiz_crop_percent / 100 : 0;
+  // int n_cols = width * vert_crop_percent / 100;
+  // int n_rows = solution == 4 ? height * horiz_crop_percent / 100 : 0;
+  int n_cols = 15;
+  int n_rows = 15;
 
   printf("Running solution %d with barch size %d \n", solution, batch_size);
   printf("Removing %d vertical seams and %d horizontal seams\n", n_cols,
          n_rows);
 
   printf("Width: %d, Height: %d\n", (int)width, (int)height);
+
+  clock_t begin = clock();
+
+  UCHAR *reference_r = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *reference_g = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *reference_b = malloc(pixelCount * sizeof(UCHAR));
 
   UCHAR *original_r = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *original_g = malloc(pixelCount * sizeof(UCHAR));
@@ -710,6 +752,8 @@ int main(int argc, char const *argv[]) {
   for (y = 0; y < height; ++y) {
     for (x = 0; x < width; ++x) {
       int index = get_index(x, y, width);
+      BMP_GetPixelRGB(bmp, x, y, reference_r + index, reference_g + index,
+                      reference_b + index);
       BMP_GetPixelRGB(bmp, x, y, original_r + index, original_g + index,
                       original_b + index);
 
@@ -749,7 +793,7 @@ int main(int argc, char const *argv[]) {
 
   } else if (solution == 4) {
     printf("Running Solution 4...\n");
-    int energy_disruption = remove_vert_and_horiz_seams_randomly(
+    int energy_disruption = remove_vert_and_horiz_seams_inorder(
         energy_r, removed_mask, original_r, original_g, original_b, width,
         height, n_cols, n_rows, batch_size);
     printf("Energy disruption: %d\n", energy_disruption);
@@ -798,6 +842,16 @@ int main(int argc, char const *argv[]) {
     }
   }
 
+  UCHAR *cropped_r = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
+  get_cropped_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g,
+                  original_b, removed_mask, width, height, n_cols, n_rows);
+
+  clock_t end = clock();
+  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+  printf("EXECTION TIME: %f\n", time_spent);
+
   BMP *bmpEnergy = BMP_Create(width, height, 32);
   BMP *bmpOut = BMP_Create(width, height, 32);
   for (y = 0; y < height; ++y) {
@@ -809,12 +863,6 @@ int main(int argc, char const *argv[]) {
                       *(original_g + index), *(original_b + index));
     }
   }
-
-  UCHAR *cropped_r = malloc(pixelCount * sizeof(UCHAR));
-  UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
-  UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
-  get_cropped_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g,
-                  original_b, removed_mask, width, height, n_cols, n_rows);
 
   BMP *bmpCropped = BMP_Create(width - n_cols, height - n_rows, 32);
   for (y = 0; y < height - n_rows; ++y) {

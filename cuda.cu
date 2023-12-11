@@ -5,6 +5,21 @@
 
 __device__ int d_abs(int a) { return a > 0 ? a : -a; }
 
+
+#define cudaCheckForErrorAndSync()                                             \
+  gpuErrchk(cudaPeekAtLastError());                                            \
+  gpuErrchk(cudaDeviceSynchronize());
+
+#define cudaStartTimer(start, stop)                                            \
+  cudaEventCreate(&start);                                                     \
+  cudaEventCreate(&stop);                                                      \
+  cudaEventRecord(start, 0);
+
+#define cudaStopTimerAndRecord(start, stop, time)                              \
+  cudaEventRecord(stop, 0);                                                    \
+  cudaEventSynchronize(stop);                                                  \
+  cudaEventElapsedTime(&time, start, stop);
+
 #define span 1
 #define divider 4
 
@@ -77,11 +92,16 @@ extern "C" void energy(UCHAR *out_r, UCHAR *out_g, UCHAR *out_b, int width,
   cudaMalloc((void **)&energy_g, pixelCount * sizeof(UCHAR));
   cudaMalloc((void **)&energy_b, pixelCount * sizeof(UCHAR));
 
+    float time;
+  cudaEvent_t start, stop;
+  cudaStartTimer(start, stop);
+
   energy_kernel<<<blocks, threads>>>(original_r, original_g, original_b,
                                      energy_r, energy_g, energy_b, width,
                                      height);
-  gpuErrchk(cudaPeekAtLastError());
-  gpuErrchk(cudaDeviceSynchronize());
+  cudaCheckForErrorAndSync();
+  cudaStopTimerAndRecord(start, stop, time);
+  printf("GPU kernel took %.4f ms \n\n", time);
 
   cudaMemcpy(out_r, energy_r, pixelCount * sizeof(UCHAR),
              cudaMemcpyDeviceToHost);
