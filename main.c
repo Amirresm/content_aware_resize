@@ -76,7 +76,7 @@ void find_best_path1(int width, int height, UCHAR *h_r,
 int find_x_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
                         int height) {
   int index = x + y * width;
-  if (removed_mask[index] == 0) {
+  if (removed_mask[index] == 0 || x <= 0 || x >= width - 1) {
     return x;
   }
   if (dir == 0) {
@@ -85,12 +85,22 @@ int find_x_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
     return find_x_of_unremoved(x + 1, y, dir, removed_mask, width, height);
   }
 }
-void find_best_path2(int width, int height, int batch_size,
-                     UCHAR *energy_matrix, point *least_energy_paths,
-                     UCHAR *removed_mask) {
+int find_y_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
+                        int height) {
+  int index = x + y * width;
+  if (removed_mask[index] == 0 || y <= 0 || y >= height - 1) {
+    return y;
+  }
+  if (dir == 0) {
+    return find_x_of_unremoved(x, y - 1, dir, removed_mask, width, height);
+  } else {
+    return find_x_of_unremoved(x, y + 1, dir, removed_mask, width, height);
+  }
+}
+void find_best_seam(int width, int height, int batch_size, UCHAR *energy_matrix,
+                    point *least_energy_paths, UCHAR *removed_mask) {
   int least_total_energy_disruption = 99999999;
   for (int batch = 0; batch < batch_size; batch++) {
-    // int x = (width / 100) * batch;
     int x = rand() % width;
     int total_energy_disruption = 0;
     point *path = malloc(height * sizeof(point));
@@ -186,6 +196,31 @@ void find_best_path2(int width, int height, int batch_size,
   }
 }
 
+void update_energy(int x, int y, UCHAR *energy_matrix, UCHAR *removed_mask,
+                   UCHAR *r, UCHAR *g, UCHAR *b, int width, int height) {
+  int x_left = find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
+  int x_right = find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
+  int y_up = find_y_of_unremoved(x, y - 1, 0, removed_mask, width, height);
+  int y_down = find_y_of_unremoved(x, y + 1, 1, removed_mask, width, height);
+
+  UCHAR e_r = (abs(r[x_left + y * width] - r[x + y * width]) +
+               abs(r[x_right + y * width] - r[x + y * width]) +
+               abs(r[x + y_up * width] - r[x + y * width]) +
+               abs(r[x + y_down * width] - r[x + y * width])) /
+              4;
+  UCHAR e_g = (abs(g[x_left + y * width] - g[x + y * width]) +
+               abs(g[x_right + y * width] - g[x + y * width]) +
+               abs(g[x + y_up * width] - g[x + y * width]) +
+               abs(g[x + y_down * width] - g[x + y * width])) /
+              4;
+  UCHAR e_b = (abs(b[x_left + y * width] - b[x + y * width]) +
+               abs(b[x_right + y * width] - b[x + y * width]) +
+               abs(b[x + y_up * width] - b[x + y * width]) +
+               abs(b[x + y_down * width] - b[x + y * width])) /
+              4;
+  energy_matrix[x + y * width] = e_r * 0.3 + e_g * 0.59 + e_b * 0.11;
+}
+
 int main() {
   printf("Program start.\n");
   srand(time(NULL));
@@ -202,7 +237,7 @@ int main() {
   sprintf(outCroppedFile, "%s_out_cropped.bmp", inFileBase);
 
   int crop_percent = 25;
-  int batch_size = 1000;
+  int batch_size = 5;
 
   UINT width, height;
   UINT x, y;
@@ -263,16 +298,31 @@ int main() {
   point **least_energy_paths = malloc(n_cols * sizeof(point *));
   for (int i = 0; i < n_cols; i++) {
     least_energy_paths[i] = malloc(height * sizeof(point));
-    find_best_path2(width, height, batch_size, energy_r, least_energy_paths[i],
-                    removed_mask);
+    find_best_seam(width, height, batch_size, energy_r, least_energy_paths[i],
+                   removed_mask);
     for (int y = 0; y < height; ++y) {
       int x = least_energy_paths[i][y].x;
       int index = x + y * width;
 
       removed_mask[index] = 255;
-      energy_r[index] = 255;
-      energy_g[index] = 0;
-      energy_b[index] = 0;
+      // energy_r[index] = 255;
+      // energy_g[index] = 0;
+      // energy_b[index] = 0;
+      int x_left =
+          find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
+      int x_right =
+          find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
+      int y_up = find_y_of_unremoved(x, y - 1, 0, removed_mask, width, height);
+      int y_down =
+          find_y_of_unremoved(x, y + 1, 1, removed_mask, width, height);
+      update_energy(x_left, y, energy_r, removed_mask, original_r, original_g,
+                    original_b, width, height);
+      update_energy(x_right, y, energy_r, removed_mask, original_r, original_g,
+                    original_b, width, height);
+      update_energy(x, y_up, energy_r, removed_mask, original_r, original_g,
+                    original_b, width, height);
+      update_energy(x, y_down, energy_r, removed_mask, original_r, original_g,
+                    original_b, width, height);
     }
   }
   for (int i = 0; i < n_cols; i++) {
@@ -283,7 +333,7 @@ int main() {
       original_g[index] = 0;
       original_b[index] = 0;
     }
-    free(least_energy_paths[i]);
+    // free(least_energy_paths[i]);
   }
 
   BMP *bmpEnergy = BMP_Create(width, height, 32);
@@ -302,8 +352,7 @@ int main() {
     int reducer = 0;
     for (x = 0; x < width; ++x) {
       int index = x + y * width;
-      if (energy_r[index] == 255 && energy_g[index] == 0 &&
-          energy_b[index] == 0) {
+      if (removed_mask[index] == 255) {
         reducer++;
         continue;
       }
@@ -320,12 +369,9 @@ int main() {
   BMP_CHECK_ERROR(stdout, -3);
 
   BMP_Free(bmp);
-  cudaFree(energy_r);
-  cudaFree(energy_g);
-  cudaFree(energy_b);
-  free(energy_r);
-  free(energy_g);
-  free(energy_b);
+  // free(energy_r);
+  // free(energy_g);
+  // free(energy_b);
 
   return 0;
 }

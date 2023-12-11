@@ -6,31 +6,31 @@
 __device__ int d_abs(int a) { return a > 0 ? a : -a; }
 
 #define span 1
-#define divider 8
+#define divider 4
 
 __device__ void energy_pixel(UCHAR *r, UCHAR *g, UCHAR *b, UCHAR *o_r,
                              UCHAR *o_g, UCHAR *o_b, int width, int height) {
 
   o_r[0] = (d_abs(r[0] - r[span]) + d_abs(r[0] - r[-span]) +
-            d_abs(r[0] - r[width * span]) + d_abs(r[0] - r[-width * span]) +
-            d_abs(r[0] - r[width * span + span]) +
-            d_abs(r[0] - r[width * span - span]) +
-            d_abs(r[0] - r[-width * span + span]) +
-            d_abs(r[0] - r[-width * span - span])) /
+            d_abs(r[0] - r[width * span]) + d_abs(r[0] - r[-width * span])) /
+           // d_abs(r[0] - r[width * span + span]) +
+           // d_abs(r[0] - r[width * span - span]) +
+           // d_abs(r[0] - r[-width * span + span]) +
+           // d_abs(r[0] - r[-width * span - span])) /
            divider;
   o_g[0] = (d_abs(g[0] - g[span]) + d_abs(g[0] - g[-span]) +
-            d_abs(g[0] - g[width * span]) + d_abs(g[0] - g[-width * span]) +
-            d_abs(g[0] - g[width * span + span]) +
-            d_abs(g[0] - g[width * span - span]) +
-            d_abs(g[0] - g[-width * span + span]) +
-            d_abs(g[0] - g[-width * span - span])) /
+            d_abs(g[0] - g[width * span]) + d_abs(g[0] - g[-width * span])) /
+           // d_abs(g[0] - g[width * span + span]) +
+           // d_abs(g[0] - g[width * span - span]) +
+           // d_abs(g[0] - g[-width * span + span]) +
+           // d_abs(g[0] - g[-width * span - span])) /
            divider;
   o_b[0] = (d_abs(b[0] - b[span]) + d_abs(b[0] - b[-span]) +
-            d_abs(b[0] - b[width * span]) + d_abs(b[0] - b[-width * span]) +
-            d_abs(b[0] - b[width * span + span]) +
-            d_abs(b[0] - b[width * span - span]) +
-            d_abs(b[0] - b[-width * span + span]) +
-            d_abs(b[0] - b[-width * span - span])) /
+            d_abs(b[0] - b[width * span]) + d_abs(b[0] - b[-width * span])) /
+           // d_abs(b[0] - b[width * span + span]) +
+           // d_abs(b[0] - b[width * span - span]) +
+           // d_abs(b[0] - b[-width * span + span]) +
+           // d_abs(b[0] - b[-width * span - span])) /
            divider;
   UCHAR gray = o_r[0] * 0.3 + o_g[0] * 0.59 + o_b[0] * 0.11;
   o_r[0] = gray > 255 ? 255 : gray;
