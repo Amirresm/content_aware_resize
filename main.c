@@ -21,80 +21,46 @@ void copy_rgb(UCHAR *h_r, UCHAR *h_g, UCHAR *h_b, UCHAR *d_r, UCHAR *d_g,
   memcpy(h_b, d_b, pixelCount * sizeof(UCHAR));
 }
 
-int dfs_vertical(int x, int y, UCHAR *gray_channel, int bound_low,
-                 int bound_high, int width, int height, int total_energy,
-                 point *path) {
-  int index = x + y * width;
-  // gray_channel[index] = 0;
-  total_energy += gray_channel[index];
-  if (y == 0) {
-    path[y].x = x;
-    path[y].y = y;
-  }
-  if (y == height - 1) {
-    return total_energy;
-  }
-  int children_energy[] = {0, 0, 0};
-  int least_energy = 99999999;
-  int least_child_x = 0;
-  int i = 0;
-  for (int x_child = x - 1; x_child <= x + 1; ++x_child) {
-    if (x_child < bound_low || x_child >= bound_high) {
-      continue;
-    }
-    int next_energy =
-        dfs_vertical(x_child, y + 1, gray_channel, bound_low, bound_high, width,
-                     height, total_energy, path);
-    children_energy[i] = next_energy;
-    i++;
-  }
-  for (int i = 0; i < 3; i++) {
-    if (children_energy[i] < least_energy) {
-      least_energy = children_energy[i];
-      least_child_x = x + i - 1;
-    }
-  }
-  path[y].x = least_child_x;
-  path[y].y = y + 1;
-  return least_energy;
-}
-
-void find_best_path1(int width, int height, UCHAR *h_r,
-                     point *least_energy_paths) {
-  int least_total_energy = 99999999;
-  for (int batch = 0; batch < 1; batch++) {
-    int x = rand() % width;
-    point *path = malloc(height * sizeof(point));
-    int total_energy =
-        dfs_vertical(x, 0, h_r, x - 1, x + 1, width, height, 0, path);
-    if (total_energy < least_total_energy) {
-      least_total_energy = total_energy;
-      memcpy(least_energy_paths, path, height * sizeof(point));
-    }
-  }
-}
-int find_x_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
-                        int height) {
+void find_horiz_of_unremoved(point *p, int dir, UCHAR *removed_mask, int width,
+                             int height) {
+  int x = p->x;
+  int y = p->y;
   int index = x + y * width;
   if (removed_mask[index] == 0 || x <= 0 || x >= width - 1) {
-    return x;
+    return;
   }
-  if (dir == 0) {
-    return find_x_of_unremoved(x - 1, y, dir, removed_mask, width, height);
+  if (removed_mask[index] == 1) {
+    if (dir == 0) {
+      p->x -= 1;
+      return find_horiz_of_unremoved(p, dir, removed_mask, width, height);
+    } else {
+      p->x += 1;
+      return find_horiz_of_unremoved(p, dir, removed_mask, width, height);
+    }
   } else {
-    return find_x_of_unremoved(x + 1, y, dir, removed_mask, width, height);
+    p->y += 1;
+    return find_horiz_of_unremoved(p, dir, removed_mask, width, height);
   }
 }
-int find_y_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
-                        int height) {
+void find_vert_of_unremoved(point *p, int dir, UCHAR *removed_mask, int width,
+                            int height) {
+  int x = p->x;
+  int y = p->y;
   int index = x + y * width;
   if (removed_mask[index] == 0 || y <= 0 || y >= height - 1) {
-    return y;
+    return;
   }
-  if (dir == 0) {
-    return find_y_of_unremoved(x, y - 1, dir, removed_mask, width, height);
+  if (removed_mask[index] == 2) {
+    if (dir == 0) {
+      p->y -= 1;
+      return find_vert_of_unremoved(p, dir, removed_mask, width, height);
+    } else {
+      p->y += 1;
+      return find_vert_of_unremoved(p, dir, removed_mask, width, height);
+    }
   } else {
-    return find_y_of_unremoved(x, y + 1, dir, removed_mask, width, height);
+    p->x += 1;
+    return find_vert_of_unremoved(p, dir, removed_mask, width, height);
   }
 }
 void find_best_vertical_seam(int width, int height, int batch_size,
@@ -113,78 +79,97 @@ void find_best_vertical_seam(int width, int height, int batch_size,
       int min_energy_disrupt = 9999999;
       int rng = rand() % 31231412;
 
-      int left_x =
-          find_x_of_unremoved(x - 1, y + 1, 0, removed_mask, width, height);
-      int center_x =
-          find_x_of_unremoved(x, y + 1, 1, removed_mask, width, height);
-      int right_x = find_x_of_unremoved(center_x + 1, y + 1, 1, removed_mask,
-                                        width, height);
+      // int left_x =
+      //     find_horiz_of_unremoved(x - 1, y + 1, 0, removed_mask, width,
+      //     height);
+      // int center_x =
+      //     find_horiz_of_unremoved(x, y + 1, 1, removed_mask, width, height);
+      // int right_x = find_horiz_of_unremoved(center_x + 1, y + 1, 1,
+      //                                       removed_mask, width, height);
+      point left_c = {.x = x - 1, .y = y + 1};
+      find_horiz_of_unremoved(&left_c, 0, removed_mask, width, height);
+      point center_c = {.x = x, .y = y + 1};
+      find_horiz_of_unremoved(&center_c, 1, removed_mask, width, height);
+      point right_c = {.x = center_c.x + 1, .y = y + 1};
+      find_horiz_of_unremoved(&right_c, 1, removed_mask, width, height);
+
       for (int j = 0; j < 3; ++j) {
         char random_child_index = (rng + j) % 3 - 1; // random order of -1, 0, 1
-        int x_child;
+        // int x_child;
+        point child;
         int introduced_energy = 0;
         switch (random_child_index) {
         case -1: // left
-          x_child = left_x;
-          if (x_child <= 1 || y == height - 1) {
+          // x_child = left_x;
+          child.x = left_c.x;
+          child.y = left_c.y;
+          if (child.x <= 1 || y == height - 1) {
             introduced_energy = 255;
           } else {
-            int x_left_parent =
-                find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
-            int x_right_child = find_x_of_unremoved(
-                x_child + 1, y + 1, 1, removed_mask, width, height);
-            ;
-            int x_left_child = find_x_of_unremoved(x_child - 1, y + 1, 0,
-                                                   removed_mask, width, height);
-            ;
+            point left_parent = {.x = x - 1, .y = y};
+            find_horiz_of_unremoved(&left_parent, 0, removed_mask, width,
+                                    height);
+            point right_child = {.x = child.x + 1, .y = y + 1};
+            find_horiz_of_unremoved(&right_child, 1, removed_mask, width,
+                                    height);
+            point left_child = {.x = child.x - 1, .y = y + 1};
+            find_horiz_of_unremoved(&left_child, 0, removed_mask, width,
+                                    height);
+
             introduced_energy =
-                abs(energy_matrix[x_right_child + (y + 1) * width] -
-                    energy_matrix[x_left_parent + y * width]) +
-                abs(energy_matrix[x_right_child + (y + 1) * width] -
-                    energy_matrix[x_left_child + (y + 1) * width]);
+                abs(energy_matrix[right_child.x + right_child.y * width] -
+                    energy_matrix[left_parent.x + left_parent.y * width]) +
+                abs(energy_matrix[right_child.x + right_child.y * width] -
+                    energy_matrix[left_child.x + left_child.y * width]);
           }
           break;
 
         case 0: // center
-          x_child = center_x;
-          if (x_child == 0 || x_child == width - 1 || y == height - 1) {
+          // x_child = center_x;
+          child.x = center_c.x;
+          child.y = center_c.y;
+          if (child.x == 0 || child.x == width - 1 || y == height - 1) {
             introduced_energy = 255;
           } else {
-            int x_right_child = find_x_of_unremoved(
-                x_child + 1, y + 1, 1, removed_mask, width, height);
-            ;
-            int x_left_child = find_x_of_unremoved(x_child - 1, y + 1, 0,
-                                                   removed_mask, width, height);
+            point right_child = {.x = child.x + 1, .y = y + 1};
+            find_horiz_of_unremoved(&right_child, 1, removed_mask, width,
+                                    height);
+            point left_child = {.x = child.x - 1, .y = y + 1};
+            find_horiz_of_unremoved(&left_child, 0, removed_mask, width,
+                                    height);
             introduced_energy =
-                abs(energy_matrix[x_right_child + (y + 1) * width] -
-                    energy_matrix[x_left_child + (y + 1) * width]);
+                abs(energy_matrix[right_child.x + right_child.y * width] -
+                    energy_matrix[left_child.x + left_child.y * width]);
           }
           break;
 
         case 1: // right
-          x_child = right_x;
-          if (x_child >= width - 2 || y == height - 1) {
+          // x_child = right_x;
+          child.x = right_c.x;
+          child.y = right_c.y;
+          if (child.x >= width - 2 || y == height - 1) {
             introduced_energy = 255;
           } else {
-            int x_right_parent =
-                find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
-            int x_right_child = find_x_of_unremoved(
-                x_child + 1, y + 1, 1, removed_mask, width, height);
-            ;
-            int x_left_child = find_x_of_unremoved(x_child - 1, y + 1, 0,
-                                                   removed_mask, width, height);
-            ;
+            point right_parent = {.x = x + 1, .y = y};
+            find_horiz_of_unremoved(&right_parent, 0, removed_mask, width,
+                                    height);
+            point right_child = {.x = child.x + 1, .y = y + 1};
+            find_horiz_of_unremoved(&right_child, 1, removed_mask, width,
+                                    height);
+            point left_child = {.x = child.x - 1, .y = y + 1};
+            find_horiz_of_unremoved(&left_child, 0, removed_mask, width,
+                                    height);
             introduced_energy =
-                abs(energy_matrix[x_left_child + (y + 1) * width] -
-                    energy_matrix[x_right_parent + y * width]) +
-                abs(energy_matrix[x_left_child + (y + 1) * width] -
-                    energy_matrix[x_right_child + (y + 1) * width]);
+                abs(energy_matrix[left_child.x + left_child.y * width] -
+                    energy_matrix[right_parent.x + right_parent.y * width]) +
+                abs(energy_matrix[left_child.x + left_child.y * width] -
+                    energy_matrix[right_child.x + right_child.y * width]);
           }
           break;
         }
         if (introduced_energy < min_energy_disrupt) {
           min_energy_disrupt = introduced_energy;
-          x = x_child;
+          x = child.x;
         }
       }
 
@@ -212,82 +197,94 @@ void find_best_horiz_seam(int width, int height, int batch_size,
       int min_energy_disrupt = 9999999;
       int rng = rand() % 31231412;
 
-      int up_y =
-          find_y_of_unremoved(x + 1, y - 1, 0, removed_mask, width, height);
-      int center_y =
-          find_y_of_unremoved(x + 1, y, 1, removed_mask, width, height);
-      int down_y = find_y_of_unremoved(x + 1, center_y + 1, 1, removed_mask,
-                                       width, height);
+      point up_c = {.x = x + 1, .y = y - 1};
+      find_vert_of_unremoved(&up_c, 0, removed_mask, width, height);
+
+      point center_c = {.x = x + 1, .y = y};
+      find_vert_of_unremoved(&center_c, 1, removed_mask, width, height);
+
+      point down_c = {.x = x + 1, .y = center_c.y + 1};
+      find_vert_of_unremoved(&down_c, 1, removed_mask, width, height);
+
       for (int j = 0; j < 3; ++j) {
         char random_child_index = (rng + j) % 3 - 1; // random order of -1, 0, 1
-        int y_child;
+        // int y_child;
+        point child;
         int introduced_energy = 0;
         switch (random_child_index) {
         case -1: // up
-          y_child = up_y;
-          if (y_child <= 1 || x == width - 1) {
+          // y_child = up_y;
+          child.x = up_c.x;
+          child.y = up_c.y;
+          if (child.y <= 1 || x == width - 1) {
             introduced_energy = 255;
           } else {
-            int y_up_parent =
-                find_y_of_unremoved(x, y - 1, 0, removed_mask, width, height);
-            int y_down_child = find_y_of_unremoved(x + 1, y_child + 1, 1,
-                                                   removed_mask, width, height);
-            ;
-            int y_up_child = find_y_of_unremoved(x + 1, y_child - 1, 0,
-                                                 removed_mask, width, height);
-            ;
+            point up_parent = {.x = x, .y = y - 1};
+            find_vert_of_unremoved(&up_parent, 0, removed_mask, width, height);
+            point down_child = {.x = x + 1, .y = child.y + 1};
+            find_vert_of_unremoved(&down_child, 1, removed_mask, width, height);
+
+            point up_child = {.x = x + 1, .y = child.y - 1};
+            find_vert_of_unremoved(&up_child, 0, removed_mask, width, height);
+
             introduced_energy =
-                abs(energy_matrix[x + 1 + y_up_child * width] -
-                    energy_matrix[x + y_up_parent * width]) +
-                abs(energy_matrix[x + 1 + (y_down_child)*width] -
-                    energy_matrix[x + 1 + (y_up_child)*width]);
+                abs(energy_matrix[up_child.x + up_child.y * width] -
+                    energy_matrix[up_parent.x + up_parent.y * width]) +
+                abs(energy_matrix[down_child.x + down_child.y * width] -
+                    energy_matrix[up_child.x + up_child.y * width]);
             // introduced_energy = energy_matrix[x + 1 + y_child * width];
           }
           break;
 
         case 0: // center
-          y_child = center_y;
-          if (y_child == 0 || y_child == height - 1 || x == width - 1) {
+          // y_child = center_y;
+          child.x = center_c.x;
+          child.y = center_c.y;
+
+          if (child.y == 0 || child.y == height - 1 || x == width - 1) {
             introduced_energy = 255;
           } else {
-            int y_down_child = find_y_of_unremoved(x + 1, y_child + 1, 1,
-                                                   removed_mask, width, height);
-            ;
-            int y_up_child = find_y_of_unremoved(x + 1, y_child - 1, 0,
-                                                 removed_mask, width, height);
+            point down_child = {.x = x + 1, .y = child.y + 1};
+            find_vert_of_unremoved(&down_child, 1, removed_mask, width, height);
+            point up_child = {.x = x + 1, .y = child.y - 1};
+            find_vert_of_unremoved(&up_child, 0, removed_mask, width, height);
             introduced_energy =
-                abs(energy_matrix[x + 1 + (y_down_child)*width] -
-                    energy_matrix[x + 1 + (y_up_child)*width]);
+                abs(energy_matrix[down_child.x + down_child.y * width] -
+                    energy_matrix[up_child.x + up_child.y * width]);
             // introduced_energy = energy_matrix[x + 1 + y_child * width];
           }
           break;
 
         case 1: // right
-          y_child = down_y;
-          if (y_child >= height - 2 || x == width - 1) {
+          // y_child = down_y;
+          child.x = down_c.x;
+          child.y = down_c.y;
+          if (child.y >= height - 2 || x == width - 1) {
             introduced_energy = 255;
           } else {
-            int y_down_parent = find_y_of_unremoved(
-                x, y_child + 1, 1, removed_mask, width, height);
-            int y_down_child = find_y_of_unremoved(x + 1, y_child + 1, 1,
-                                                   removed_mask, width, height);
-            ;
-            int y_up_child = find_y_of_unremoved(x + 1, y_child - 1, 0,
-                                                 removed_mask, width, height);
-            ;
+            point down_parent = {.x = x, .y = y + 1};
+            find_vert_of_unremoved(&down_parent, 1, removed_mask, width,
+                                   height);
+            point down_child = {.x = x + 1, .y = child.y + 1};
+            find_vert_of_unremoved(&down_child, 1, removed_mask, width, height);
+            point up_child = {.x = x + 1, .y = child.y - 1};
+            find_vert_of_unremoved(&up_child, 0, removed_mask, width, height);
             introduced_energy =
-                abs(energy_matrix[x + 1 + y_down_child * width] -
-                    energy_matrix[x + y_down_parent * width]) +
-                abs(energy_matrix[x + 1 + y_up_child * width] -
-                    energy_matrix[x + 1 + y_down_child * width]);
+                abs(energy_matrix[down_child.x + down_child.y * width] -
+                    energy_matrix[down_parent.x + down_parent.y * width]) +
+                abs(energy_matrix[up_child.x + up_child.y * width] -
+                    energy_matrix[down_child.x + down_child.y * width]);
             // introduced_energy = energy_matrix[x + 1 + y_child * width];
           }
           break;
         }
         if (introduced_energy < min_energy_disrupt) {
           min_energy_disrupt = introduced_energy;
-          y = y_child;
+          y = child.y;
         }
+        // if (removed_mask[x + y * width] != 0) {
+        //   printf("ERROR: removed mask is 1\n");
+        // }
       }
 
       total_energy_disruption += min_energy_disrupt;
@@ -301,27 +298,52 @@ void find_best_horiz_seam(int width, int height, int batch_size,
 
 void update_energy(int x, int y, UCHAR *energy_matrix, UCHAR *removed_mask,
                    UCHAR *r, UCHAR *g, UCHAR *b, int width, int height) {
-  int x_left = find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
-  int x_right = find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
-  int y_up = find_y_of_unremoved(x, y - 1, 0, removed_mask, width, height);
-  int y_down = find_y_of_unremoved(x, y + 1, 1, removed_mask, width, height);
+  point left = {.x = x - 1, .y = y};
+  find_horiz_of_unremoved(&left, 0, removed_mask, width, height);
+  point right = {.x = x + 1, .y = y};
+  find_horiz_of_unremoved(&right, 1, removed_mask, width, height);
+  point up = {.x = x, .y = y - 1};
+  find_vert_of_unremoved(&up, 0, removed_mask, width, height);
+  point down = {.x = x, .y = y + 1};
+  find_vert_of_unremoved(&down, 1, removed_mask, width, height);
 
-  UCHAR e_r = (abs(r[x_left + y * width] - r[x + y * width]) +
-               abs(r[x_right + y * width] - r[x + y * width]) +
-               abs(r[x + y_up * width] - r[x + y * width]) +
-               abs(r[x + y_down * width] - r[x + y * width])) /
+  UCHAR e_r = (abs(r[left.x + left.y * width] - r[x + y * width]) +
+               abs(r[right.x + right.y * width] - r[x + y * width]) +
+               abs(r[up.x + up.y * width] - r[x + y * width]) +
+               abs(r[down.x + down.y * width] - r[x + y * width])) /
               4;
-  UCHAR e_g = (abs(g[x_left + y * width] - g[x + y * width]) +
-               abs(g[x_right + y * width] - g[x + y * width]) +
-               abs(g[x + y_up * width] - g[x + y * width]) +
-               abs(g[x + y_down * width] - g[x + y * width])) /
+  UCHAR e_g = (abs(g[left.x + left.y * width] - g[x + y * width]) +
+               abs(g[right.x + right.y * width] - g[x + y * width]) +
+               abs(g[up.x + up.y * width] - g[x + y * width]) +
+               abs(g[down.x + down.y * width] - g[x + y * width])) /
               4;
-  UCHAR e_b = (abs(b[x_left + y * width] - b[x + y * width]) +
-               abs(b[x_right + y * width] - b[x + y * width]) +
-               abs(b[x + y_up * width] - b[x + y * width]) +
-               abs(b[x + y_down * width] - b[x + y * width])) /
+  UCHAR e_b = (abs(b[left.x + left.y * width] - b[x + y * width]) +
+               abs(b[right.x + right.y * width] - b[x + y * width]) +
+               abs(b[up.x + up.y * width] - b[x + y * width]) +
+               abs(b[down.x + down.y * width] - b[x + y * width])) /
               4;
   energy_matrix[x + y * width] = e_r * 0.3 + e_g * 0.59 + e_b * 0.11;
+}
+
+void update_enery_around_pixel(int x, int y, UCHAR *energy_matrix,
+                               UCHAR *removed_mask, UCHAR *r, UCHAR *g,
+                               UCHAR *b, int width, int height) {
+  point left = {.x = x - 1, .y = y};
+  find_horiz_of_unremoved(&left, 0, removed_mask, width, height);
+  point right = {.x = x + 1, .y = y};
+  find_horiz_of_unremoved(&right, 1, removed_mask, width, height);
+  point up = {.x = x, .y = y - 1};
+  find_vert_of_unremoved(&up, 0, removed_mask, width, height);
+  point down = {.x = x, .y = y + 1};
+  find_vert_of_unremoved(&down, 1, removed_mask, width, height);
+  update_energy(left.x, left.y, energy_matrix, removed_mask, r, g, b, width,
+                height);
+  update_energy(right.x, right.y, energy_matrix, removed_mask, r, g, b, width,
+                height);
+  update_energy(up.x, up.y, energy_matrix, removed_mask, r, g, b, width,
+                height);
+  update_energy(up.x, down.y, energy_matrix, removed_mask, r, g, b, width,
+                height);
 }
 
 int main() {
@@ -329,8 +351,8 @@ int main() {
   srand(time(NULL));
 
   BMP_GetError();
-  const char *inFileBase = "main";
-  // const char *inFileBase = "okanagan";
+  // const char *inFileBase = "main";
+  const char *inFileBase = "okanagan";
   char inFile[100];
   sprintf(inFile, "%s.bmp", inFileBase);
   char outColFile[100];
@@ -340,7 +362,8 @@ int main() {
   sprintf(outEnergyFile, "%s_out_energy.bmp", inFileBase);
   sprintf(outCroppedFile, "%s_out_cropped.bmp", inFileBase);
 
-  int crop_percent = 25;
+  int horiz_crop_percent = 25;
+  int vert_crop_percent = 25;
   int batch_size = 100;
 
   UINT width, height;
@@ -371,9 +394,6 @@ int main() {
                       original_b + index);
 
       removed_mask[index] = 0;
-
-      // rescaling to 254 to use 255 as a removed seam marker
-      // original_r[index] = (original_r[index] / 255) * 254;
     }
   }
 
@@ -381,13 +401,7 @@ int main() {
   UCHAR *energy_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *energy_b = malloc(pixelCount * sizeof(UCHAR));
 
-  UCHAR *cropped_r = malloc(pixelCount * sizeof(UCHAR));
-  UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
-  UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
-
   copy_rgb(energy_r, energy_g, energy_b, original_r, original_g, original_b,
-           width, height);
-  copy_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g, original_b,
            width, height);
 
   printf("H/D memory allocation done.\n");
@@ -398,84 +412,57 @@ int main() {
 
   printf("Data received from device.\n");
 
-  // int n_cols = width * crop_percent / 100;
-  // point **least_energy_paths = malloc(n_cols * sizeof(point *));
-  // for (int i = 0; i < n_cols; i++) {
-  //   least_energy_paths[i] = malloc(height * sizeof(point));
-  //   find_best_vertical_seam(width, height, batch_size, energy_r,
-  //                           least_energy_paths[i], removed_mask);
-  //   for (int y = 0; y < height; ++y) {
-  //     int x = least_energy_paths[i][y].x;
-  //     int index = x + y * width;
-
-  //     removed_mask[index] = 255;
-
-  //     int x_left =
-  //         find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
-  //     int x_right =
-  //         find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
-  //     int y_up = find_y_of_unremoved(x, y - 1, 0, removed_mask, width,
-  //     height); int y_down =
-  //         find_y_of_unremoved(x, y + 1, 1, removed_mask, width, height);
-  //     update_energy(x_left, y, energy_r, removed_mask, original_r,
-  //     original_g,
-  //                   original_b, width, height);
-  //     update_energy(x_right, y, energy_r, removed_mask, original_r,
-  //     original_g,
-  //                   original_b, width, height);
-  //     update_energy(x, y_up, energy_r, removed_mask, original_r, original_g,
-  //                   original_b, width, height);
-  //     update_energy(x, y_down, energy_r, removed_mask, original_r,
-  //     original_g,
-  //                   original_b, width, height);
-  //   }
-  // }
-  // for (int i = 0; i < n_cols; i++) {
-  //   for (int y = 0; y < height; ++y) {
-  //     int x = least_energy_paths[i][y].x;
-  //     int index = x + y * width;
-  //     original_r[index] = 255;
-  //     original_g[index] = 0;
-  //     original_b[index] = 0;
-  //   }
-  // }
-
-  int n_rows = height * crop_percent / 100;
-  point **least_energy_paths = malloc(n_rows * sizeof(point *));
-  for (int i = 0; i < n_rows; i++) {
-    least_energy_paths[i] = malloc(width * sizeof(point));
-    find_best_horiz_seam(width, height, batch_size, energy_r,
-                         least_energy_paths[i], removed_mask);
-    for (int x = 0; x < width; ++x) {
-      int y = least_energy_paths[i][x].y;
+  int n_cols = width * vert_crop_percent / 100;
+  point **vert_least_energy_paths = malloc(n_cols * sizeof(point *));
+  for (int i = 0; i < n_cols; i++) {
+    vert_least_energy_paths[i] = malloc(height * sizeof(point));
+    find_best_vertical_seam(width, height, batch_size, energy_r,
+                            vert_least_energy_paths[i], removed_mask);
+    for (int y = 0; y < height; ++y) {
+      int x = vert_least_energy_paths[i][y].x;
       int index = x + y * width;
 
-      removed_mask[index] = 255;
+      if (removed_mask[index] == 0)
+        removed_mask[index] = 1;
 
-      int x_left =
-          find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
-      int x_right =
-          find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
-      int y_up = find_y_of_unremoved(x, y - 1, 0, removed_mask, width, height);
-      int y_down =
-          find_y_of_unremoved(x, y + 1, 1, removed_mask, width, height);
-      update_energy(x_left, y, energy_r, removed_mask, original_r, original_g,
-                    original_b, width, height);
-      update_energy(x_right, y, energy_r, removed_mask, original_r, original_g,
-                    original_b, width, height);
-      update_energy(x, y_up, energy_r, removed_mask, original_r, original_g,
-                    original_b, width, height);
-      update_energy(x, y_down, energy_r, removed_mask, original_r, original_g,
-                    original_b, width, height);
+      update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
+                                original_g, original_b, width, height);
     }
   }
+
+  int n_rows = height * horiz_crop_percent / 100;
+  point **horiz_least_energy_paths = malloc(n_rows * sizeof(point *));
   for (int i = 0; i < n_rows; i++) {
+    horiz_least_energy_paths[i] = malloc(width * sizeof(point));
+    find_best_horiz_seam(width, height, batch_size, energy_r,
+                         horiz_least_energy_paths[i], removed_mask);
     for (int x = 0; x < width; ++x) {
-      int y = least_energy_paths[i][x].y;
+      int y = horiz_least_energy_paths[i][x].y;
+      int index = x + y * width;
+
+      if (removed_mask[index] == 0)
+        removed_mask[index] = 2;
+
+      update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
+                                original_g, original_b, width, height);
+    }
+  }
+  for (int i = 0; i < n_cols; i++) {
+    for (int y = 0; y < height; ++y) {
+      int x = vert_least_energy_paths[i][y].x;
       int index = x + y * width;
       original_r[index] = 255;
       original_g[index] = 0;
       original_b[index] = 0;
+    }
+  }
+  for (int i = 0; i < n_rows; i++) {
+    for (int x = 0; x < width; ++x) {
+      int y = horiz_least_energy_paths[i][x].y;
+      int index = x + y * width;
+      original_r[index] = 0;
+      original_g[index] = 0;
+      original_b[index] = 255;
     }
   }
 
@@ -490,30 +477,55 @@ int main() {
                       *(original_g + index), *(original_b + index));
     }
   }
-  // BMP *bmpCropped = BMP_Create(width - n_rows, height, 32);
-  // for (y = 0; y < height; ++y) {
-  //   int reducer = 0;
-  //   for (x = 0; x < width; ++x) {
-  //     int index = x + y * width;
-  //     if (removed_mask[index] == 255) {
-  //       reducer++;
-  //       continue;
-  //     }
-  //     BMP_SetPixelRGB(bmpCropped, x - reducer, y, *(original_r + index),
-  //                     *(original_g + index), *(original_b + index));
-  //   }
-  // }
-  BMP *bmpCropped = BMP_Create(width, height - n_rows, 32);
-  for (x = 0; x < width; ++x) {
+
+  int cropped_pixel_count = (width) * (height);
+  UCHAR *inter_r = malloc(cropped_pixel_count * sizeof(UCHAR));
+  UCHAR *inter_g = malloc(cropped_pixel_count * sizeof(UCHAR));
+  UCHAR *inter_b = malloc(cropped_pixel_count * sizeof(UCHAR));
+
+  UCHAR *cropped_r = malloc(cropped_pixel_count * sizeof(UCHAR));
+  UCHAR *cropped_g = malloc(cropped_pixel_count * sizeof(UCHAR));
+  UCHAR *cropped_b = malloc(cropped_pixel_count * sizeof(UCHAR));
+
+  UCHAR *inter_mask = malloc(cropped_pixel_count * sizeof(UCHAR));
+
+  for (y = 0; y < height; ++y) {
     int reducer = 0;
-    for (y = 0; y < height; ++y) {
+    for (x = 0; x < width; ++x) {
       int index = x + y * width;
-      if (removed_mask[index] == 255) {
+      if (removed_mask[index] == 1) {
         reducer++;
         continue;
       }
-      BMP_SetPixelRGB(bmpCropped, x, y - reducer, *(original_r + index),
-                      *(original_g + index), *(original_b + index));
+      int cropped_index = x - reducer + y * (width - n_cols);
+      inter_mask[cropped_index] = removed_mask[index];
+
+      inter_r[cropped_index] = original_r[index];
+      inter_g[cropped_index] = original_g[index];
+      inter_b[cropped_index] = original_b[index];
+    }
+  }
+  for (x = 0; x < (width - n_cols); ++x) {
+    int reducer = 0;
+    for (y = 0; y < height; ++y) {
+      int index = x + y * (width - n_cols);
+      if (inter_mask[index] != 0) {
+        reducer++;
+        continue;
+      }
+      int cropped_index = x + (y - reducer) * (width - n_cols);
+      cropped_r[cropped_index] = inter_r[index];
+      cropped_g[cropped_index] = inter_g[index];
+      cropped_b[cropped_index] = inter_b[index];
+    }
+  }
+
+  BMP *bmpCropped = BMP_Create(width - n_cols, height - n_rows, 32);
+  for (y = 0; y < height - n_rows; ++y) {
+    for (x = 0; x < width - n_cols; ++x) {
+      int index = x + y * (width - n_cols);
+      BMP_SetPixelRGB(bmpCropped, x, y, *(cropped_r + index),
+                      *(cropped_g + index), *(cropped_b + index));
     }
   }
 
