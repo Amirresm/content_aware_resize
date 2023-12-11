@@ -346,13 +346,57 @@ void update_enery_around_pixel(int x, int y, UCHAR *energy_matrix,
                 height);
 }
 
+void get_cropped_rgb(UCHAR *cropped_r, UCHAR *cropped_g, UCHAR *cropped_b,
+                     UCHAR *original_r, UCHAR *original_g, UCHAR *original_b,
+                     UCHAR *removed_mask, int width, int height, int n_cols,
+                     int n_rows) {
+  int cropped_pixel_count = (width) * (height);
+  UCHAR *inter_r = malloc(cropped_pixel_count * sizeof(UCHAR));
+  UCHAR *inter_g = malloc(cropped_pixel_count * sizeof(UCHAR));
+  UCHAR *inter_b = malloc(cropped_pixel_count * sizeof(UCHAR));
+
+  UCHAR *inter_mask = malloc(cropped_pixel_count * sizeof(UCHAR));
+
+  int x, y;
+  for (y = 0; y < height; ++y) {
+    int reducer = 0;
+    for (x = 0; x < width; ++x) {
+      int index = x + y * width;
+      if (removed_mask[index] == 1) {
+        reducer++;
+        continue;
+      }
+      int cropped_index = x - reducer + y * (width - n_cols);
+      inter_mask[cropped_index] = removed_mask[index];
+
+      inter_r[cropped_index] = original_r[index];
+      inter_g[cropped_index] = original_g[index];
+      inter_b[cropped_index] = original_b[index];
+    }
+  }
+  for (x = 0; x < (width - n_cols); ++x) {
+    int reducer = 0;
+    for (y = 0; y < height; ++y) {
+      int index = x + y * (width - n_cols);
+      if (inter_mask[index] != 0) {
+        reducer++;
+        continue;
+      }
+      int cropped_index = x + (y - reducer) * (width - n_cols);
+      cropped_r[cropped_index] = inter_r[index];
+      cropped_g[cropped_index] = inter_g[index];
+      cropped_b[cropped_index] = inter_b[index];
+    }
+  }
+}
+
 int main() {
   printf("Program start.\n");
   srand(time(NULL));
 
   BMP_GetError();
   // const char *inFileBase = "main";
-  const char *inFileBase = "okanagan";
+  const char *inFileBase = "Image1";
   char inFile[100];
   sprintf(inFile, "%s.bmp", inFileBase);
   char outColFile[100];
@@ -364,7 +408,7 @@ int main() {
 
   int horiz_crop_percent = 25;
   int vert_crop_percent = 25;
-  int batch_size = 100;
+  int batch_size = 1000;
 
   UINT width, height;
   UINT x, y;
@@ -478,47 +522,11 @@ int main() {
     }
   }
 
-  int cropped_pixel_count = (width) * (height);
-  UCHAR *inter_r = malloc(cropped_pixel_count * sizeof(UCHAR));
-  UCHAR *inter_g = malloc(cropped_pixel_count * sizeof(UCHAR));
-  UCHAR *inter_b = malloc(cropped_pixel_count * sizeof(UCHAR));
-
-  UCHAR *cropped_r = malloc(cropped_pixel_count * sizeof(UCHAR));
-  UCHAR *cropped_g = malloc(cropped_pixel_count * sizeof(UCHAR));
-  UCHAR *cropped_b = malloc(cropped_pixel_count * sizeof(UCHAR));
-
-  UCHAR *inter_mask = malloc(cropped_pixel_count * sizeof(UCHAR));
-
-  for (y = 0; y < height; ++y) {
-    int reducer = 0;
-    for (x = 0; x < width; ++x) {
-      int index = x + y * width;
-      if (removed_mask[index] == 1) {
-        reducer++;
-        continue;
-      }
-      int cropped_index = x - reducer + y * (width - n_cols);
-      inter_mask[cropped_index] = removed_mask[index];
-
-      inter_r[cropped_index] = original_r[index];
-      inter_g[cropped_index] = original_g[index];
-      inter_b[cropped_index] = original_b[index];
-    }
-  }
-  for (x = 0; x < (width - n_cols); ++x) {
-    int reducer = 0;
-    for (y = 0; y < height; ++y) {
-      int index = x + y * (width - n_cols);
-      if (inter_mask[index] != 0) {
-        reducer++;
-        continue;
-      }
-      int cropped_index = x + (y - reducer) * (width - n_cols);
-      cropped_r[cropped_index] = inter_r[index];
-      cropped_g[cropped_index] = inter_g[index];
-      cropped_b[cropped_index] = inter_b[index];
-    }
-  }
+  UCHAR *cropped_r = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
+  get_cropped_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g,
+                  original_b, removed_mask, width, height, n_cols, n_rows);
 
   BMP *bmpCropped = BMP_Create(width - n_cols, height - n_rows, 32);
   for (y = 0; y < height - n_rows; ++y) {
