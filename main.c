@@ -92,13 +92,14 @@ int find_y_of_unremoved(int x, int y, int dir, UCHAR *removed_mask, int width,
     return y;
   }
   if (dir == 0) {
-    return find_x_of_unremoved(x, y - 1, dir, removed_mask, width, height);
+    return find_y_of_unremoved(x, y - 1, dir, removed_mask, width, height);
   } else {
-    return find_x_of_unremoved(x, y + 1, dir, removed_mask, width, height);
+    return find_y_of_unremoved(x, y + 1, dir, removed_mask, width, height);
   }
 }
-void find_best_seam(int width, int height, int batch_size, UCHAR *energy_matrix,
-                    point *least_energy_paths, UCHAR *removed_mask) {
+void find_best_vertical_seam(int width, int height, int batch_size,
+                             UCHAR *energy_matrix, point *least_energy_paths,
+                             UCHAR *removed_mask) {
   int least_total_energy_disruption = 99999999;
   for (int batch = 0; batch < batch_size; batch++) {
     int x = rand() % width;
@@ -195,6 +196,108 @@ void find_best_seam(int width, int height, int batch_size, UCHAR *energy_matrix,
     }
   }
 }
+void find_best_horiz_seam(int width, int height, int batch_size,
+                          UCHAR *energy_matrix, point *least_energy_paths,
+                          UCHAR *removed_mask) {
+  int least_total_energy_disruption = 99999999;
+  for (int batch = 0; batch < batch_size; batch++) {
+    int y = rand() % height;
+    int total_energy_disruption = 0;
+    point *path = malloc(width * sizeof(point));
+
+    for (int x = 0; x < width; ++x) {
+      int index = x + y * width;
+      path[x].x = x;
+      path[x].y = y;
+      int min_energy_disrupt = 9999999;
+      int rng = rand() % 31231412;
+
+      int up_y =
+          find_y_of_unremoved(x + 1, y - 1, 0, removed_mask, width, height);
+      int center_y =
+          find_y_of_unremoved(x + 1, y, 1, removed_mask, width, height);
+      int down_y = find_y_of_unremoved(x + 1, center_y + 1, 1, removed_mask,
+                                       width, height);
+      for (int j = 0; j < 3; ++j) {
+        char random_child_index = (rng + j) % 3 - 1; // random order of -1, 0, 1
+        int y_child;
+        int introduced_energy = 0;
+        switch (random_child_index) {
+        case -1: // up
+          y_child = up_y;
+          if (y_child <= 1 || x == width - 1) {
+            introduced_energy = 255;
+          } else {
+            int y_up_parent =
+                find_y_of_unremoved(x, y - 1, 0, removed_mask, width, height);
+            int y_down_child = find_y_of_unremoved(x + 1, y_child + 1, 1,
+                                                   removed_mask, width, height);
+            ;
+            int y_up_child = find_y_of_unremoved(x + 1, y_child - 1, 0,
+                                                 removed_mask, width, height);
+            ;
+            introduced_energy =
+                abs(energy_matrix[x + 1 + y_up_child * width] -
+                    energy_matrix[x + y_up_parent * width]) +
+                abs(energy_matrix[x + 1 + (y_down_child)*width] -
+                    energy_matrix[x + 1 + (y_up_child)*width]);
+            // introduced_energy = energy_matrix[x + 1 + y_child * width];
+          }
+          break;
+
+        case 0: // center
+          y_child = center_y;
+          if (y_child == 0 || y_child == height - 1 || x == width - 1) {
+            introduced_energy = 255;
+          } else {
+            int y_down_child = find_y_of_unremoved(x + 1, y_child + 1, 1,
+                                                   removed_mask, width, height);
+            ;
+            int y_up_child = find_y_of_unremoved(x + 1, y_child - 1, 0,
+                                                 removed_mask, width, height);
+            introduced_energy =
+                abs(energy_matrix[x + 1 + (y_down_child)*width] -
+                    energy_matrix[x + 1 + (y_up_child)*width]);
+            // introduced_energy = energy_matrix[x + 1 + y_child * width];
+          }
+          break;
+
+        case 1: // right
+          y_child = down_y;
+          if (y_child >= height - 2 || x == width - 1) {
+            introduced_energy = 255;
+          } else {
+            int y_down_parent = find_y_of_unremoved(
+                x, y_child + 1, 1, removed_mask, width, height);
+            int y_down_child = find_y_of_unremoved(x + 1, y_child + 1, 1,
+                                                   removed_mask, width, height);
+            ;
+            int y_up_child = find_y_of_unremoved(x + 1, y_child - 1, 0,
+                                                 removed_mask, width, height);
+            ;
+            introduced_energy =
+                abs(energy_matrix[x + 1 + y_down_child * width] -
+                    energy_matrix[x + y_down_parent * width]) +
+                abs(energy_matrix[x + 1 + y_up_child * width] -
+                    energy_matrix[x + 1 + y_down_child * width]);
+            // introduced_energy = energy_matrix[x + 1 + y_child * width];
+          }
+          break;
+        }
+        if (introduced_energy < min_energy_disrupt) {
+          min_energy_disrupt = introduced_energy;
+          y = y_child;
+        }
+      }
+
+      total_energy_disruption += min_energy_disrupt;
+    }
+    if (total_energy_disruption < least_total_energy_disruption) {
+      least_total_energy_disruption = total_energy_disruption;
+      memcpy(least_energy_paths, path, width * sizeof(point));
+    }
+  }
+}
 
 void update_energy(int x, int y, UCHAR *energy_matrix, UCHAR *removed_mask,
                    UCHAR *r, UCHAR *g, UCHAR *b, int width, int height) {
@@ -227,6 +330,7 @@ int main() {
 
   BMP_GetError();
   const char *inFileBase = "main";
+  // const char *inFileBase = "okanagan";
   char inFile[100];
   sprintf(inFile, "%s.bmp", inFileBase);
   char outColFile[100];
@@ -237,7 +341,7 @@ int main() {
   sprintf(outCroppedFile, "%s_out_cropped.bmp", inFileBase);
 
   int crop_percent = 25;
-  int batch_size = 5;
+  int batch_size = 100;
 
   UINT width, height;
   UINT x, y;
@@ -294,20 +398,60 @@ int main() {
 
   printf("Data received from device.\n");
 
-  int n_cols = width * crop_percent / 100;
-  point **least_energy_paths = malloc(n_cols * sizeof(point *));
-  for (int i = 0; i < n_cols; i++) {
-    least_energy_paths[i] = malloc(height * sizeof(point));
-    find_best_seam(width, height, batch_size, energy_r, least_energy_paths[i],
-                   removed_mask);
-    for (int y = 0; y < height; ++y) {
-      int x = least_energy_paths[i][y].x;
+  // int n_cols = width * crop_percent / 100;
+  // point **least_energy_paths = malloc(n_cols * sizeof(point *));
+  // for (int i = 0; i < n_cols; i++) {
+  //   least_energy_paths[i] = malloc(height * sizeof(point));
+  //   find_best_vertical_seam(width, height, batch_size, energy_r,
+  //                           least_energy_paths[i], removed_mask);
+  //   for (int y = 0; y < height; ++y) {
+  //     int x = least_energy_paths[i][y].x;
+  //     int index = x + y * width;
+
+  //     removed_mask[index] = 255;
+
+  //     int x_left =
+  //         find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
+  //     int x_right =
+  //         find_x_of_unremoved(x + 1, y, 1, removed_mask, width, height);
+  //     int y_up = find_y_of_unremoved(x, y - 1, 0, removed_mask, width,
+  //     height); int y_down =
+  //         find_y_of_unremoved(x, y + 1, 1, removed_mask, width, height);
+  //     update_energy(x_left, y, energy_r, removed_mask, original_r,
+  //     original_g,
+  //                   original_b, width, height);
+  //     update_energy(x_right, y, energy_r, removed_mask, original_r,
+  //     original_g,
+  //                   original_b, width, height);
+  //     update_energy(x, y_up, energy_r, removed_mask, original_r, original_g,
+  //                   original_b, width, height);
+  //     update_energy(x, y_down, energy_r, removed_mask, original_r,
+  //     original_g,
+  //                   original_b, width, height);
+  //   }
+  // }
+  // for (int i = 0; i < n_cols; i++) {
+  //   for (int y = 0; y < height; ++y) {
+  //     int x = least_energy_paths[i][y].x;
+  //     int index = x + y * width;
+  //     original_r[index] = 255;
+  //     original_g[index] = 0;
+  //     original_b[index] = 0;
+  //   }
+  // }
+
+  int n_rows = height * crop_percent / 100;
+  point **least_energy_paths = malloc(n_rows * sizeof(point *));
+  for (int i = 0; i < n_rows; i++) {
+    least_energy_paths[i] = malloc(width * sizeof(point));
+    find_best_horiz_seam(width, height, batch_size, energy_r,
+                         least_energy_paths[i], removed_mask);
+    for (int x = 0; x < width; ++x) {
+      int y = least_energy_paths[i][x].y;
       int index = x + y * width;
 
       removed_mask[index] = 255;
-      // energy_r[index] = 255;
-      // energy_g[index] = 0;
-      // energy_b[index] = 0;
+
       int x_left =
           find_x_of_unremoved(x - 1, y, 0, removed_mask, width, height);
       int x_right =
@@ -325,15 +469,14 @@ int main() {
                     original_b, width, height);
     }
   }
-  for (int i = 0; i < n_cols; i++) {
-    for (int y = 0; y < height; ++y) {
-      int x = least_energy_paths[i][y].x;
+  for (int i = 0; i < n_rows; i++) {
+    for (int x = 0; x < width; ++x) {
+      int y = least_energy_paths[i][x].y;
       int index = x + y * width;
       original_r[index] = 255;
       original_g[index] = 0;
       original_b[index] = 0;
     }
-    // free(least_energy_paths[i]);
   }
 
   BMP *bmpEnergy = BMP_Create(width, height, 32);
@@ -347,16 +490,29 @@ int main() {
                       *(original_g + index), *(original_b + index));
     }
   }
-  BMP *bmpCropped = BMP_Create(width - n_cols, height, 32);
-  for (y = 0; y < height; ++y) {
+  // BMP *bmpCropped = BMP_Create(width - n_rows, height, 32);
+  // for (y = 0; y < height; ++y) {
+  //   int reducer = 0;
+  //   for (x = 0; x < width; ++x) {
+  //     int index = x + y * width;
+  //     if (removed_mask[index] == 255) {
+  //       reducer++;
+  //       continue;
+  //     }
+  //     BMP_SetPixelRGB(bmpCropped, x - reducer, y, *(original_r + index),
+  //                     *(original_g + index), *(original_b + index));
+  //   }
+  // }
+  BMP *bmpCropped = BMP_Create(width, height - n_rows, 32);
+  for (x = 0; x < width; ++x) {
     int reducer = 0;
-    for (x = 0; x < width; ++x) {
+    for (y = 0; y < height; ++y) {
       int index = x + y * width;
       if (removed_mask[index] == 255) {
         reducer++;
         continue;
       }
-      BMP_SetPixelRGB(bmpCropped, x - reducer, y, *(original_r + index),
+      BMP_SetPixelRGB(bmpCropped, x, y - reducer, *(original_r + index),
                       *(original_g + index), *(original_b + index));
     }
   }
