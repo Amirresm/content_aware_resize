@@ -28,12 +28,15 @@ void find_horiz_of_unremoved(point *p, int dir, UCHAR *removed_mask, int width,
   int x = p->x;
   int y = p->y;
   int index = get_index(x, y, width);
-  if (removed_mask[index] == 0 || x <= 0 || x >= width - 1) {
+  if (removed_mask[index] == 0) {
+    return;
+  }
+  if (x <= 0 || x >= width - 1) {
     return;
   }
   if (removed_mask[index] == 1) {
     if (dir == 0) {
-      p->x -= 1;
+      p->x += 1;
       return find_horiz_of_unremoved(p, dir, removed_mask, width, height);
     } else {
       p->x += 1;
@@ -49,12 +52,16 @@ void find_vert_of_unremoved(point *p, int dir, UCHAR *removed_mask, int width,
   int x = p->x;
   int y = p->y;
   int index = get_index(x, y, width);
-  if (removed_mask[index] == 0 || y <= 0 || y >= height - 1) {
+  if (removed_mask[index] == 0) {
+    return;
+  }
+  if (y <= 0 || y >= height - 1) {
+    printf("y: %d, height: %d\n", y, height);
     return;
   }
   if (removed_mask[index] == 2) {
     if (dir == 0) {
-      p->y -= 1;
+      p->y += 1;
       return find_vert_of_unremoved(p, dir, removed_mask, width, height);
     } else {
       p->y += 1;
@@ -151,6 +158,7 @@ int find_best_vertical_seam(int width, int height, int batch_size,
                             UCHAR *removed_mask) {
   int least_total_energy_disruption = 99999999;
   for (int batch = 0; batch < batch_size; batch++) {
+    int i = 0;
     int y = 0;
     int x = rand() % width;
     // int x = batch / batch_size * width;
@@ -159,8 +167,9 @@ int find_best_vertical_seam(int width, int height, int batch_size,
 
     while (y < height) {
       int index = get_index(x, y, width);
-      path[y].x = x;
-      path[y].y = y;
+      path[i].x = x;
+      path[i].y = y;
+      i++;
       int min_energy_disrupt = 9999999;
       int rng = rand() % 31231412;
 
@@ -181,8 +190,10 @@ int find_best_vertical_seam(int width, int height, int batch_size,
           // x_child = left_x;
           child.x = left_c.x;
           child.y = left_c.y;
+          if (child.x < 5)
+            continue;
           if (child.x <= 1 || y == height - 1) {
-            introduced_energy = 255;
+            introduced_energy = 10000;
           } else {
             point left_parent = {.x = x - 1, .y = y};
             find_horiz_of_unremoved(&left_parent, 0, removed_mask, width,
@@ -207,7 +218,7 @@ int find_best_vertical_seam(int width, int height, int batch_size,
           child.x = center_c.x;
           child.y = center_c.y;
           if (child.x == 0 || child.x == width - 1 || y == height - 1) {
-            introduced_energy = 255;
+            introduced_energy = 10000;
           } else {
             point right_child = {.x = child.x + 1, .y = y + 1};
             find_horiz_of_unremoved(&right_child, 1, removed_mask, width,
@@ -225,8 +236,10 @@ int find_best_vertical_seam(int width, int height, int batch_size,
           // x_child = right_x;
           child.x = right_c.x;
           child.y = right_c.y;
+          if (child.x > width - 6)
+            continue;
           if (child.x >= width - 2 || y == height - 1) {
-            introduced_energy = 255;
+            introduced_energy = 10000;
           } else {
             point right_parent = {.x = x + 1, .y = y};
             find_horiz_of_unremoved(&right_parent, 0, removed_mask, width,
@@ -256,6 +269,10 @@ int find_best_vertical_seam(int width, int height, int batch_size,
     }
     if (total_energy_disruption < least_total_energy_disruption) {
       least_total_energy_disruption = total_energy_disruption;
+      if (i < height) {
+        path[i].x = -1;
+        path[i].y = -1;
+      }
       memcpy(least_energy_paths, path, height * sizeof(point));
     }
   }
@@ -266,16 +283,18 @@ int find_best_horiz_seam(int width, int height, int batch_size,
                          UCHAR *removed_mask) {
   int least_total_energy_disruption = 99999999;
   for (int batch = 0; batch < batch_size; batch++) {
+    int i = 0;
     int x = 0;
-    int y = rand() % height;
+    int y = rand() % (height - 10) + 5;
     // int y = (batch / batch_size) * height;
     int total_energy_disruption = 0;
     point *path = malloc(width * sizeof(point));
 
     while (x < width) {
       int index = get_index(x, y, width);
-      path[x].x = x;
-      path[x].y = y;
+      path[i].x = x;
+      path[i].y = y;
+      i++;
       int min_energy_disrupt = 9999999;
       int rng = rand() % 31231412;
 
@@ -292,14 +311,16 @@ int find_best_horiz_seam(int width, int height, int batch_size,
         char random_child_index = (rng + j) % 3 - 1; // random order of -1, 0, 1
         // int y_child;
         point child;
-        int introduced_energy = 0;
+        int introduced_energy = 10000;
         switch (random_child_index) {
         case -1: // up
           // y_child = up_y;
           child.x = up_c.x;
           child.y = up_c.y;
+          if (child.y < 5)
+            continue;
           if (child.y <= 1 || x == width - 1) {
-            introduced_energy = 255;
+            introduced_energy = 10000;
           } else {
             point up_parent = {.x = x, .y = y - 1};
             find_vert_of_unremoved(&up_parent, 0, removed_mask, width, height);
@@ -324,7 +345,7 @@ int find_best_horiz_seam(int width, int height, int batch_size,
           child.y = center_c.y;
 
           if (child.y == 0 || child.y == height - 1 || x == width - 1) {
-            introduced_energy = 255;
+            introduced_energy = 10000;
           } else {
             point down_child = {.x = x + 1, .y = child.y + 1};
             find_vert_of_unremoved(&down_child, 1, removed_mask, width, height);
@@ -341,8 +362,10 @@ int find_best_horiz_seam(int width, int height, int batch_size,
           // y_child = down_y;
           child.x = down_c.x;
           child.y = down_c.y;
+          if (child.y > height - 6)
+            continue;
           if (child.y >= height - 2 || x == width - 1) {
-            introduced_energy = 255;
+            introduced_energy = 10000;
           } else {
             point down_parent = {.x = x, .y = y + 1};
             find_vert_of_unremoved(&down_parent, 1, removed_mask, width,
@@ -371,6 +394,10 @@ int find_best_horiz_seam(int width, int height, int batch_size,
     }
     if (total_energy_disruption < least_total_energy_disruption) {
       least_total_energy_disruption = total_energy_disruption;
+      if (i < width) {
+        path[i].x = -1;
+        path[i].y = -1;
+      }
       memcpy(least_energy_paths, path, width * sizeof(point));
     }
   }
@@ -406,16 +433,16 @@ void update_energy(int x, int y, UCHAR *energy_matrix, UCHAR *removed_mask,
   energy_matrix[x + y * width] = e_r * 0.3 + e_g * 0.59 + e_b * 0.11;
 }
 
-void update_enery_around_pixel(int x, int y, UCHAR *energy_matrix,
-                               UCHAR *removed_mask, UCHAR *r, UCHAR *g,
-                               UCHAR *b, int width, int height) {
-  point left = {.x = x - 1, .y = y};
+void update_energy_around_pixel(int x, int y, UCHAR *energy_matrix,
+                                UCHAR *removed_mask, UCHAR *r, UCHAR *g,
+                                UCHAR *b, int width, int height) {
+  point left = {.x = x - 1 > 0 ? x - 1 : 1, .y = y};
   find_horiz_of_unremoved(&left, 0, removed_mask, width, height);
-  point right = {.x = x + 1, .y = y};
+  point right = {.x = x + 1 < width - 1 ? x + 1 : width - 2, .y = y};
   find_horiz_of_unremoved(&right, 1, removed_mask, width, height);
-  point up = {.x = x, .y = y - 1};
+  point up = {.x = x, .y = y - 1 > 0 ? y - 1 : 1};
   find_vert_of_unremoved(&up, 0, removed_mask, width, height);
-  point down = {.x = x, .y = y + 1};
+  point down = {.x = x, .y = y + 1 < height - 1 ? y + 1 : height - 2};
   find_vert_of_unremoved(&down, 1, removed_mask, width, height);
   update_energy(left.x, left.y, energy_matrix, removed_mask, r, g, b, width,
                 height);
@@ -444,8 +471,8 @@ int remove_vert_seam_sol2(int width, int height, int batch_size,
     else
       removed_mask[index] = 3;
 
-    update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
-                              original_g, original_b, width, height);
+    update_energy_around_pixel(x, y, energy_r, removed_mask, original_r,
+                               original_g, original_b, width, height);
   }
   free(vert_least_energy_paths);
   return energy;
@@ -458,8 +485,11 @@ int remove_vert_seam(int width, int height, int batch_size, UCHAR *energy_r,
   int energy_disruption =
       find_best_vertical_seam(width, height, batch_size, energy_r,
                               vert_least_energy_paths, removed_mask);
-  for (int y = 0; y < height; ++y) {
-    int x = vert_least_energy_paths[y].x;
+  for (int i = 0; i < height; ++i) {
+    int x = vert_least_energy_paths[i].x;
+    int y = vert_least_energy_paths[i].y;
+    if (x == -1)
+      break;
     int index = get_index(x, y, width);
 
     if (removed_mask[index] == 0)
@@ -467,8 +497,8 @@ int remove_vert_seam(int width, int height, int batch_size, UCHAR *energy_r,
     else
       removed_mask[index] = 3;
 
-    update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
-                              original_g, original_b, width, height);
+    update_energy_around_pixel(x, y, energy_r, removed_mask, original_r,
+                               original_g, original_b, width, height);
   }
   free(vert_least_energy_paths);
   return energy_disruption;
@@ -482,8 +512,11 @@ int remove_horiz_seam(int width, int height, int batch_size, UCHAR *energy_r,
   int energy_disruption =
       find_best_horiz_seam(width, height, batch_size, energy_r,
                            horiz_least_energy_paths, removed_mask);
-  for (int x = 0; x < width; ++x) {
-    int y = horiz_least_energy_paths[x].y;
+  for (int i = 0; i < width; ++i) {
+    int x = horiz_least_energy_paths[i].x;
+    int y = horiz_least_energy_paths[i].y;
+    if (x == -1)
+      break;
     int index = get_index(x, y, width);
 
     if (removed_mask[index] == 0)
@@ -491,8 +524,8 @@ int remove_horiz_seam(int width, int height, int batch_size, UCHAR *energy_r,
     else
       removed_mask[index] = 4;
 
-    update_enery_around_pixel(x, y, energy_r, removed_mask, original_r,
-                              original_g, original_b, width, height);
+    update_energy_around_pixel(x, y, energy_r, removed_mask, original_r,
+                               original_g, original_b, width, height);
   }
   free(horiz_least_energy_paths);
   return energy_disruption;
@@ -526,20 +559,6 @@ void get_cropped_rgb(UCHAR *cropped_r, UCHAR *cropped_g, UCHAR *cropped_b,
       inter_b[cropped_index] = original_b[index];
     }
   }
-  int new_w = (width - n_cols);
-  // for (x = 1; x < new_w - 1; ++x) {
-  //   for (y = 1; y < height - 1; ++y) {
-  //     if (inter_mask[get_index(x, y, new_w)] &&
-  //         (inter_mask[get_index(x - 1, y + 1, new_w)] ||
-  //          inter_mask[get_index(x - 1, y, new_w)] ||
-  //          inter_mask[get_index(x - 1, y - 1, new_w)]) &&
-  //         (inter_mask[get_index(x + 1, y + 1, new_w)] ||
-  //          inter_mask[get_index(x + 1, y, new_w)] ||
-  //          inter_mask[get_index(x + 1, y - 1, new_w)])) {
-  //       inter_mask[get_index(x, y, new_w)] = 0;
-  //     }
-  //   }
-  // }
   for (x = 0; x < (width - n_cols); ++x) {
     int reducer = 0;
     for (y = 0; y < height; ++y) {
@@ -729,8 +748,8 @@ int main(int argc, char const *argv[]) {
   BMP_CHECK_ERROR(stderr, -2);
   // int n_cols = width * vert_crop_percent / 100;
   // int n_rows = solution == 4 ? height * horiz_crop_percent / 100 : 0;
-  int n_cols = 15;
-  int n_rows = 15;
+  int n_cols = 20;
+  int n_rows = 20;
 
   printf("Running solution %d with barch size %d \n", solution, batch_size);
   printf("Removing %d vertical seams and %d horizontal seams\n", n_cols,
@@ -790,32 +809,37 @@ int main(int argc, char const *argv[]) {
       energy_disruption += ed;
     }
     printf("Total energy: %d\n", energy_disruption);
-
   } else if (solution == 4) {
     printf("Running Solution 4...\n");
-    int energy_disruption = remove_vert_and_horiz_seams_inorder(
+    int energy_disruption = remove_vert_and_horiz_seams_randomly(
         energy_r, removed_mask, original_r, original_g, original_b, width,
         height, n_cols, n_rows, batch_size);
     printf("Energy disruption: %d\n", energy_disruption);
   }
 
-  for (int x = 0; x < width; ++x) {
-    for (int y = 0; y < height; ++y) {
-      int index = get_index(x, y, width);
-      if (x == 0 && removed_mask[index] != 0) {
-        removed_mask[index] = 0;
-      }
-      if (y == 0 && removed_mask[index] != 0) {
-        removed_mask[index] = 0;
-      }
-      if (x == 1 && removed_mask[index] != 0) {
-        removed_mask[y * width] = removed_mask[index];
-      }
-      if (y == 1 && removed_mask[index] != 0) {
-        removed_mask[x] = removed_mask[index];
-      }
-    }
-  }
+  // for (int x = 0; x < width; ++x)
+  // {
+  //   for (int y = 0; y < height; ++y)
+  //   {
+  //     int index = get_index(x, y, width);
+  //     if (x == 0 && removed_mask[index] != 0)
+  //     {
+  //       removed_mask[index] = 0;
+  //     }
+  //     if (y == 0 && removed_mask[index] != 0)
+  //     {
+  //       removed_mask[index] = 0;
+  //     }
+  //     if (x == 1 && removed_mask[index] != 0)
+  //     {
+  //       removed_mask[y * width] = removed_mask[index];
+  //     }
+  //     if (y == 1 && removed_mask[index] != 0)
+  //     {
+  //       removed_mask[x] = removed_mask[index];
+  //     }
+  //   }
+  // }
   for (int x = 0; x < width; ++x) {
     for (int y = 0; y < height; ++y) {
       int index = get_index(x, y, width);
