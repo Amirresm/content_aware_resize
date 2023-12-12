@@ -116,6 +116,9 @@ int main(int argc, char const *argv[]) {
 
   clock_t begin = clock();
 
+  UCHAR *reference_r = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *reference_g = malloc(pixelCount * sizeof(UCHAR));
+  UCHAR *reference_b = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *original_r = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *original_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *original_b = malloc(pixelCount * sizeof(UCHAR));
@@ -126,6 +129,8 @@ int main(int argc, char const *argv[]) {
       int index = get_index(x, y, width);
       BMP_GetPixelRGB(bmp, x, y, original_r + index, original_g + index,
                       original_b + index);
+      BMP_GetPixelRGB(bmp, x, y, reference_r + index, reference_g + index,
+                      reference_b + index);
 
       removed_mask[index] = 0;
     }
@@ -188,6 +193,32 @@ int main(int argc, char const *argv[]) {
     printf("Energy disruption: %d\n", energy_disruption);
   }
 
+  for (int x = 0; x < width; ++x) {
+    for (int y = 0; y < height; ++y) {
+      int index = get_index(x, y, width);
+      if (removed_mask[index] == 1) {
+        original_r[index] = 255;
+        original_g[index] = 0;
+        original_b[index] = 0;
+      }
+      if (removed_mask[index] == 2) {
+        original_r[index] = 0;
+        original_g[index] = 0;
+        original_b[index] = 255;
+      }
+      if (removed_mask[index] == 3) {
+        original_r[index] = 255;
+        original_g[index] = 0;
+        original_b[index] = 255;
+      }
+      if (removed_mask[index] == 4) {
+        original_r[index] = 0;
+        original_g[index] = 255;
+        original_b[index] = 255;
+      }
+    }
+  }
+
   UCHAR *cropped_r = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
@@ -213,11 +244,11 @@ int main(int argc, char const *argv[]) {
   int cropped_width = width;
   int cropped_height = height;
   for (int i = 0; i < n_cols + n_rows; i++) {
-    remove_one_seam_from_image(cropped_r, cropped_g, cropped_b, original_r,
-                               original_g, original_b, &removed_seams[i],
+    remove_one_seam_from_image(cropped_r, cropped_g, cropped_b, reference_r,
+                               reference_g, reference_b, &removed_seams[i],
                                cropped_width, cropped_height, removed_seams, i,
                                n_cols + n_rows);
-    copy_rgb(original_r, original_g, original_b, cropped_r, cropped_g,
+    copy_rgb(reference_r, reference_g, reference_b, cropped_r, cropped_g,
              cropped_b, cropped_width, cropped_height);
     if (removed_seams[i].type == 0) {
       cropped_width--;
