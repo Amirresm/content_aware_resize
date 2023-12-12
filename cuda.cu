@@ -5,7 +5,6 @@
 
 __device__ int d_abs(int a) { return a > 0 ? a : -a; }
 
-
 #define cudaCheckForErrorAndSync()                                             \
   gpuErrchk(cudaPeekAtLastError());                                            \
   gpuErrchk(cudaDeviceSynchronize());
@@ -92,7 +91,7 @@ extern "C" void energy(UCHAR *out_r, UCHAR *out_g, UCHAR *out_b, int width,
   cudaMalloc((void **)&energy_g, pixelCount * sizeof(UCHAR));
   cudaMalloc((void **)&energy_b, pixelCount * sizeof(UCHAR));
 
-    float time;
+  float time;
   cudaEvent_t start, stop;
   cudaStartTimer(start, stop);
 
@@ -101,7 +100,7 @@ extern "C" void energy(UCHAR *out_r, UCHAR *out_g, UCHAR *out_b, int width,
                                      height);
   cudaCheckForErrorAndSync();
   cudaStopTimerAndRecord(start, stop, time);
-  printf("GPU kernel took %.4f ms \n\n", time);
+  printf("GPU kernel took %.4f ms \n", time);
 
   cudaMemcpy(out_r, energy_r, pixelCount * sizeof(UCHAR),
              cudaMemcpyDeviceToHost);
