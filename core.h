@@ -568,3 +568,108 @@ seam *remove_vert_and_horiz_seams_dnc(UCHAR *energy_r, UCHAR *removed_mask,
            height, n_cols, n_rows, batch_size, seams, 0, n_cols + n_rows);
   return seams;
 }
+
+seam *seam_carving_dp(UCHAR *energy_r, UCHAR *removed_mask, UCHAR *original_r,
+                      UCHAR *original_g, UCHAR *original_b, int width,
+                      int height, int n_cols, int n_rows, int batch_size) {
+  seam *dp_seams = (seam *)malloc((n_cols + n_rows) * sizeof(seam));
+  // Initialize DP table
+  int ***dp = (int ***)malloc((width + 1) * sizeof(int **));
+  for (int i = 0; i <= width; ++i) {
+    dp[i] = (int **)malloc((height + 1) * sizeof(int *));
+    for (int j = 0; j <= height; ++j) {
+      dp[i][j] = (int *)malloc((n_cols + 1) * sizeof(int));
+      for (int k = 0; k <= n_cols; ++k) {
+        dp[i][j][k] = 999999999; // Initializing with a large value
+      }
+    }
+  }
+  // printf(dp_seams[0].path == NULL ? "true" : "false");
+  // Fill base cases
+  for (int i = 0; i <= width; ++i) {
+    dp[i][0][0] = 0;
+  }
+  for (int i = 0; i <= height; ++i) {
+    dp[0][i][0] = 0;
+  }
+
+  for (int cols_removed = 1; cols_removed <= n_cols; ++cols_removed) {
+    for (int rows_removed = 0; rows_removed <= n_rows; ++rows_removed) {
+      for (int w = 1; w <= width; ++w) {
+        for (int h = 1; h <= height; ++h) {
+          int ed_left = remove_vert_seam(
+              width, height, batch_size, energy_r, removed_mask, original_r,
+              original_g, original_b, &dp_seams[cols_removed + rows_removed]);
+          int ed_right = remove_horiz_seam(
+              width, height, batch_size, energy_r, removed_mask, original_r,
+              original_g, original_b, &dp_seams[cols_removed + rows_removed]);
+
+          if (rows_removed > 0) {
+            int ed1 = dp[w][h][cols_removed - 1];
+            dp[w][h][cols_removed] = ed_left + ed1;
+          }
+
+          if (cols_removed > 0) {
+            int ed2 = dp[w][h][cols_removed];
+            dp[w][h][cols_removed] = ed_right + ed2;
+          }
+        }
+      }
+    }
+  }
+  int w = width;
+  int h = height;
+  int cols_removed = n_cols;
+  int rows_removed = n_rows;
+
+  while (w > 0 && h > 0 && cols_removed > 0 && rows_removed >= 0) {
+    int ed_left = remove_vert_seam(
+        width, height, batch_size, energy_r, removed_mask, original_r,
+        original_g, original_b, &dp_seams[cols_removed + rows_removed]);
+    int ed_right = remove_horiz_seam(
+        width, height, batch_size, energy_r, removed_mask, original_r,
+        original_g, original_b, &dp_seams[cols_removed + rows_removed]);
+
+    if (rows_removed > 0 &&
+        dp[w][h][cols_removed] == ed_left + dp[w][h][cols_removed - 1]) {
+      // This means a vertical seam was removed
+      // Mark or store the seam information
+      rows_removed--;
+
+      // Update width (w) and height (h) based on the removal decision
+      for (int i = h; i < height; ++i) {
+        energy_r[i * width + w] = energy_r[i * width + w + 1];
+        removed_mask[i * width + w] = removed_mask[i * width + w + 1];
+        original_r[i * width + w] = original_r[i * width + w + 1];
+        original_g[i * width + w] = original_g[i * width + w + 1];
+        original_b[i * width + w] = original_b[i * width + w + 1];
+      }
+      w--; // Decrease width after removal
+    } else if (cols_removed > 0 && dp[w][h][cols_removed] ==
+                                       ed_right + dp[w][h][cols_removed - 1]) {
+      // This means a horizontal seam was removed
+      // Mark or store the seam information
+      cols_removed--;
+
+      // Update width (w) and height (h) based on the removal decision
+      for (int i = w; i < width; ++i) {
+        energy_r[h * width + i] = energy_r[(h + 1) * width + i];
+        removed_mask[h * width + i] = removed_mask[(h + 1) * width + i];
+        original_r[h * width + i] = original_r[(h + 1) * width + i];
+        original_g[h * width + i] = original_g[(h + 1) * width + i];
+        original_b[h * width + i] = original_b[(h + 1) * width + i];
+      }
+      h--; // Decrease height after removal
+    }
+  }
+  // Free memory
+  for (int i = 0; i <= width; ++i) {
+    for (int j = 0; j <= height; ++j) {
+      free(dp[i][j]);
+    }
+    free(dp[i]);
+  }
+  free(dp);
+
+  return dp_seams;
+}

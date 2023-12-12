@@ -1,8 +1,6 @@
 #include "core.h"
 #include "cuda.cuh"
 #include "qdbmp.h"
-#include <cuda_device_runtime_api.h>
-#include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,11 +16,11 @@ int main(int argc, char const *argv[]) {
     return 1;
   }
   int solution = 4;
-  int vert_crop_percent = 30;
+  int vert_crop_percent = 10;
   int horiz_crop_percent = 10;
 
-  int batch_size = 100;
-  int method = 0;
+  int batch_size = 50;
+  int method = 3;
   // const char *inFileBase = "main";
   const char *inFileBase = "rain";
   const char *in_path = "";
@@ -181,6 +179,10 @@ int main(int argc, char const *argv[]) {
       removed_seams = remove_vert_and_horiz_seams_dnc(
           energy_r, removed_mask, original_r, original_g, original_b, width,
           height, n_cols, n_rows, batch_size);
+    } else if (method == 3) {
+      seam *result = seam_carving_dp(energy_r, removed_mask, original_r,
+                                     original_g, original_b, width, height,
+                                     n_cols, n_rows, batch_size);
     } else {
       printf("Invalid method\n");
       return 1;
