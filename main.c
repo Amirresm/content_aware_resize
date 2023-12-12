@@ -15,7 +15,7 @@ typedef struct {
 
 typedef struct {
   point *path;
-  char *type;
+  char type;
   int energy;
   int length;
 } seam;
@@ -414,7 +414,7 @@ int find_best_horiz_seam(int width, int height, int batch_size,
       best_seam->path = path;
       best_seam->energy = total_energy_disruption;
       best_seam->length = i;
-      best_seam->type = 0;
+      best_seam->type = 1;
     }
   }
   return least_total_energy_disruption;
@@ -620,34 +620,35 @@ seam *remove_vert_and_horiz_seams_inorder(UCHAR *energy_r, UCHAR *removed_mask,
   }
   return seams;
 }
-// int remove_vert_and_horiz_seams_randomly(UCHAR *energy_r, UCHAR
-// *removed_mask,
-//                                          UCHAR *original_r, UCHAR
-//                                          *original_g, UCHAR *original_b, int
-//                                          width, int height, int n_cols, int
-//                                          n_rows, int batch_size) {
-//   srand(time(NULL));
-//   int energy_disruption = 0;
-//   int i = n_cols, j = n_rows;
-//   while (i + j > 0) {
-//     int rng = rand() % 2;
-//     if ((rng == 0 && i > 0) || (j == 0)) {
-//       int ed =
-//           remove_vert_seam(width, height, batch_size, energy_r, removed_mask,
-//                            original_r, original_g, original_b);
-//       energy_disruption += ed * ed;
-//       i--;
-//     } else if (j > 0) {
-//       int ed =
-//           remove_horiz_seam(width, height, batch_size, energy_r,
-//           removed_mask,
-//                             original_r, original_g, original_b);
-//       energy_disruption += ed * ed;
-//       j--;
-//     }
-//   }
-//   return energy_disruption;
-// }
+seam *remove_vert_and_horiz_seams_randomly(UCHAR *energy_r, UCHAR *removed_mask,
+                                           UCHAR *original_r, UCHAR *original_g,
+                                           UCHAR *original_b, int width,
+                                           int height, int n_cols, int n_rows,
+                                           int batch_size) {
+  seam *seams = malloc((n_cols + n_rows) * sizeof(seam));
+  srand(time(NULL));
+  int energy_disruption = 0;
+  int i = n_cols, j = n_rows;
+  int k = 0;
+  while (i + j > 0) {
+    int rng = rand() % 2;
+    if ((rng == 0 && i > 0) || (j == 0)) {
+      int ed =
+          remove_vert_seam(width, height, batch_size, energy_r, removed_mask,
+                           original_r, original_g, original_b, &seams[k]);
+      energy_disruption += ed * ed;
+      i--;
+    } else if (j > 0) {
+      int ed =
+          remove_horiz_seam(width, height, batch_size, energy_r, removed_mask,
+                            original_r, original_g, original_b, &seams[k]);
+      energy_disruption += ed * ed;
+      j--;
+    }
+    k++;
+  }
+  return seams;
+}
 
 // int remove_vert_and_horiz_seams_dnc(UCHAR *energy_r, UCHAR *removed_mask,
 //                                     UCHAR *original_r, UCHAR *original_g,
@@ -669,6 +670,95 @@ seam *remove_vert_and_horiz_seams_inorder(UCHAR *energy_r, UCHAR *removed_mask,
 //   }
 //   return energy_disruption;
 // }
+
+void print_seam(seam *s) {
+  printf("Seam type: %d, energy: %d, length: %d\n", s->type, s->energy,
+         s->length);
+  // for (int i = 0; i < s->length; ++i) {
+  //   printf("(%d, %d) ", s->path[i].x, s->path[i].y);
+  // }
+  printf("\n");
+}
+
+void print_seams(seam *seams, int n_cols, int n_rows) {
+  for (int i = 0; i < n_cols + n_rows; ++i) {
+    print_seam(&seams[i]);
+  }
+}
+
+void remove_one_seam_from_image(UCHAR *dest_r, UCHAR *dest_g, UCHAR *dest_b,
+                                UCHAR *src_r, UCHAR *src_g, UCHAR *src_b,
+                                seam *current_seam, int width, int height,
+                                seam *other_seams, int current_seam_index,
+                                int total_seam_count) {
+  printf("remove_one_seam_from_image for s %d: \n", current_seam_index);
+  print_seam(current_seam);
+  if (current_seam->type == 0) {
+    for (int i = 0; i < current_seam->length; ++i) {
+      int y = current_seam->path[i].y;
+      for (int x = 0; x < width; ++x) {
+        int target_x = current_seam->path[i].x;
+        int index = get_index(x, y, width);
+        int dest_x = x;
+        if (x == target_x) {
+          continue;
+        } else if (x > target_x) {
+          dest_x = x - 1;
+        } else {
+          dest_x = x;
+        }
+        int dest_index = get_index(dest_x, y, width - 1);
+        dest_r[dest_index] = src_r[index];
+        dest_g[dest_index] = src_g[index];
+        dest_b[dest_index] = src_b[index];
+      }
+    }
+
+    for (int i = 0; i < current_seam->length; ++i) {
+      int x = current_seam->path[i].x;
+      int y = current_seam->path[i].y;
+      for (int j = current_seam_index + 1; j < total_seam_count; ++j) {
+        for (int k = 0; k < other_seams[j].length; ++k) {
+          if (other_seams[j].path[k].x > x && other_seams[j].path[k].y == y) {
+            other_seams[j].path[k].x -= 1;
+          }
+        }
+      }
+    }
+  } else {
+    for (int i = 0; i < current_seam->length; ++i) {
+      int x = current_seam->path[i].x;
+      for (int y = 0; y < height; ++y) {
+        int target_y = current_seam->path[i].y;
+        int index = get_index(x, y, width);
+        int dest_y = y;
+        if (y == target_y) {
+          continue;
+        } else if (y > target_y) {
+          dest_y = y - 1;
+        } else {
+          dest_y = y;
+        }
+        int dest_index = get_index(x, dest_y, width);
+        dest_r[dest_index] = src_r[index];
+        dest_g[dest_index] = src_g[index];
+        dest_b[dest_index] = src_b[index];
+      }
+    }
+
+    for (int i = 0; i < current_seam->length; ++i) {
+      int x = current_seam->path[i].x;
+      int y = current_seam->path[i].y;
+      for (int j = current_seam_index + 1; j < total_seam_count; ++j) {
+        for (int k = 0; k < other_seams[j].length; ++k) {
+          if (other_seams[j].path[k].y > y && other_seams[j].path[k].x == x) {
+            other_seams[j].path[k].y -= 1;
+          }
+        }
+      }
+    }
+  }
+}
 
 int main(int argc, char const *argv[]) {
   // parse args
@@ -758,8 +848,8 @@ int main(int argc, char const *argv[]) {
   BMP_CHECK_ERROR(stderr, -2);
   // int n_cols = width * vert_crop_percent / 100;
   // int n_rows = solution == 4 ? height * horiz_crop_percent / 100 : 0;
-  int n_cols = 20;
-  int n_rows = 20;
+  int n_cols = 8;
+  int n_rows = 8;
 
   printf("Running solution %d with barch size %d \n", solution, batch_size);
   printf("Removing %d vertical seams and %d horizontal seams\n", n_cols,
@@ -823,7 +913,7 @@ int main(int argc, char const *argv[]) {
     printf("Total energy: %d\n", energy_disruption);
   } else if (solution == 4) {
     printf("Running Solution 4...\n");
-    removed_seams = remove_vert_and_horiz_seams_inorder(
+    removed_seams = remove_vert_and_horiz_seams_randomly(
         energy_r, removed_mask, original_r, original_g, original_b, width,
         height, n_cols, n_rows, batch_size);
 
@@ -857,37 +947,48 @@ int main(int argc, char const *argv[]) {
   //     }
   //   }
   // }
-  for (int x = 0; x < width; ++x) {
-    for (int y = 0; y < height; ++y) {
+  // for (int x = 0; x < width; ++x) {
+  //   for (int y = 0; y < height; ++y) {
+  //     int index = get_index(x, y, width);
+  //     if (removed_mask[index] == 1) {
+  //       original_r[index] = 255;
+  //       original_g[index] = 0;
+  //       original_b[index] = 0;
+  //     }
+  //     if (removed_mask[index] == 2) {
+  //       original_r[index] = 0;
+  //       original_g[index] = 0;
+  //       original_b[index] = 255;
+  //     }
+  //     if (removed_mask[index] == 3) {
+  //       original_r[index] = 255;
+  //       original_g[index] = 0;
+  //       original_b[index] = 255;
+  //     }
+  //     if (removed_mask[index] == 4) {
+  //       original_r[index] = 0;
+  //       original_g[index] = 255;
+  //       original_b[index] = 255;
+  //     }
+  //   }
+  // }
+
+  for (int i = 0; i < n_cols + n_rows; ++i) {
+    for (int j = 0; j < removed_seams[i].length; ++j) {
+      int x = removed_seams[i].path[j].x;
+      int y = removed_seams[i].path[j].y;
       int index = get_index(x, y, width);
-      if (removed_mask[index] == 1) {
-        original_r[index] = 255;
-        original_g[index] = 0;
-        original_b[index] = 0;
-      }
-      if (removed_mask[index] == 2) {
-        original_r[index] = 0;
-        original_g[index] = 0;
-        original_b[index] = 255;
-      }
-      if (removed_mask[index] == 3) {
-        original_r[index] = 255;
-        original_g[index] = 0;
-        original_b[index] = 255;
-      }
-      if (removed_mask[index] == 4) {
-        original_r[index] = 0;
-        original_g[index] = 255;
-        original_b[index] = 255;
-      }
+      original_r[index] = 255;
+      original_g[index] = i * 255 / (n_cols + n_rows);
+      original_b[index] = 0;
     }
   }
 
   UCHAR *cropped_r = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *cropped_g = malloc(pixelCount * sizeof(UCHAR));
   UCHAR *cropped_b = malloc(pixelCount * sizeof(UCHAR));
-  get_cropped_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g,
-                  original_b, removed_mask, width, height, n_cols, n_rows);
+  // get_cropped_rgb(cropped_r, cropped_g, cropped_b, original_r, original_g,
+  //                 original_b, removed_mask, width, height, n_cols, n_rows);
 
   clock_t end = clock();
   double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
@@ -905,10 +1006,38 @@ int main(int argc, char const *argv[]) {
     }
   }
 
-  BMP *bmpCropped = BMP_Create(width - n_cols, height - n_rows, 32);
-  for (y = 0; y < height - n_rows; ++y) {
-    for (x = 0; x < width - n_cols; ++x) {
-      int index = get_index(x, y, width - n_cols);
+  int cropped_width = width;
+  int cropped_height = height;
+  for (int i = 0; i < n_cols + n_rows; i++) {
+    remove_one_seam_from_image(cropped_r, cropped_g, cropped_b, original_r,
+                               original_g, original_b, &removed_seams[i],
+                               cropped_width, cropped_height, removed_seams, i,
+                               n_cols + n_rows);
+    copy_rgb(original_r, original_g, original_b, cropped_r, cropped_g,
+             cropped_b, cropped_width, cropped_height);
+    if (removed_seams[i].type == 0) {
+      cropped_width--;
+    } else {
+      cropped_height--;
+    }
+  }
+  print_seams(removed_seams, n_cols, n_rows);
+
+  // for (int i = 0; i < n_cols + n_rows; ++i) {
+  //   for (int j = 0; j < removed_seams[i].length; ++j) {
+  //     int x = removed_seams[i].path[j].x;
+  //     int y = removed_seams[i].path[j].y;
+  //     int index = get_index(x, y, cropped_width);
+  //     cropped_r[index] = 255;
+  //     cropped_g[index] = (i)*255 / (n_cols + n_rows);
+  //     cropped_b[index] = 0;
+  //   }
+  // }
+
+  BMP *bmpCropped = BMP_Create(cropped_width, cropped_height, 32);
+  for (y = 0; y < height; ++y) {
+    for (x = 0; x < cropped_width; ++x) {
+      int index = get_index(x, y, cropped_width);
       BMP_SetPixelRGB(bmpCropped, x, y, *(cropped_r + index),
                       *(cropped_g + index), *(cropped_b + index));
     }
